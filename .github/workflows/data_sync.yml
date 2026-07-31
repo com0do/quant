@@ -1,0 +1,94 @@
+name: Data Sync & Validation
+
+on:
+  workflow_dispatch:
+    inputs:
+      sync_data:
+        description: 'Run JQ data sync (requires JQ credentials in Secrets)'
+        type: boolean
+        required: false
+        default: false
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: uv sync --frozen
+
+      - name: Restore data cache
+        uses: actions/cache@v4
+        with:
+          path: data/
+          key: quant-data-${{ github.run_id }}
+          restore-keys: |
+            quant-data-
+
+      - name: Mode consistency check
+        run: |
+          uv run python main.py --mode mode-consistency 2>&1 | tee mode_consistency_output.txt
+
+      - name: Report results
+        if: always()
+        run: |
+          echo "### Mode Consistency Check" >> $GITHUB_STEP_SUMMARY
+          if [ -f mode_consistency_output.txt ]; then
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            cat mode_consistency_output.txt >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+          fi
+
+  sync:
+    if: ${{ inputs.sync_data }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: uv sync --frozen
+
+      - name: Restore data cache
+        uses: actions/cache@v4
+        with:
+          path: data/
+          key: quant-data-${{ github.run_id }}
+          restore-keys: |
+            quant-data-
+
+      - name: Run JQ bulk sync
+        env:
+          CC_JQ_NAME: ${{ secrets.JQ_USERNAME }}
+          CC_JQ_PW: ${{ secrets.JQ_PASSWORD }}
+        run: |
+          echo "Running JQ bulk sync (smallcap)..."
+          uv run python scripts/jq_bulk_sync_smallcap.py 2>&1 | tee sync_output.txt
+
+      - name: Update data cache
+        uses: actions/cache@v4
+        with:
+          path: data/
+          key: quant-data-${{ github.run_id }}
+
+      - name: Upload sync report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sync-report
+          path: sync_output.txt
+          retention-days: 7

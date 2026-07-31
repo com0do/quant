@@ -1,0 +1,12 @@
+{
+  "ann_return": 0.3980420604329211,
+  "bench_ann_return": 0.2963862930745247,
+  "excess_ann_return": 0.10165576735839643,
+  "ann_volatility": 0.19735555125870627,
+  "tracking_error": 0.26203092454988125,
+  "information_ratio": 0.38795332090294876,
+  "sharpe": 2.016877953998579,
+  "max_drawdown": -0.10116379295560551,
+  "trade_count": 251,
+  "final_equity": 136796.7068020756
+}

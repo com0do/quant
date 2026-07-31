@@ -1,0 +1,48 @@
+[data]
+source = "sqlite"
+sqlite_db_path = "data/market_cache.db"
+start_date = "2025-01-01"
+end_date = "2025-12-23"
+benchmark_index = "000852.XSHG"
+
+[strategy]
+strategy_names = ["adaptive_regime_midterm", "csi1000_enhanced"]
+strategy_weights = [0.2, 0.8]
+buy_score_threshold = 0.05
+sell_score_threshold = 0.86
+entry_interval_days = 3
+top_k = 5
+max_positions = 5
+stop_loss_pct = 0.05
+trailing_stop_pct = 0.10
+min_hold_days = 2
+weekly_auto_weight = true
+weekly_adaptive_min = 0.25
+weekly_adaptive_max = 0.75
+weekly_adaptive_neutral = 0.50
+dual_layer_enable = true
+dual_layer_defense_floor = 0.25
+dual_layer_defense_ceiling = 0.65
+dual_layer_offense_floor = 0.35
+dual_layer_offense_ceiling = 0.75
+dual_layer_rel_lookback_days = 20
+dual_layer_rel_sensitivity = 1.0
+dual_layer_breadth_center = 0.56
+dual_layer_breadth_width = 0.20
+value_filter_strict = false
+require_above_ma200 = true
+allow_short_below_ma200_exception = true
+ma200_exception_min_ret5 = 0.04
+ma200_exception_vol_ratio_min = 1.2
+ma200_exception_vol_ratio_max = 2.4
+open_vol_min = 0.008
+open_vol_max = 0.045
+max_single_trade_risk_pct = 0.01
+max_single_position_loss_pct = 0.05
+max_total_exposure_pct = 0.50
+pause_after_consecutive_loss_days = 2
+pause_after_loss_pause_days = 1
+trend_extend_hold = true
+
+[daemon]
+preopen_scan_threads = 4

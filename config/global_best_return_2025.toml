@@ -1,0 +1,85 @@
+[data]
+source = "sqlite"
+sqlite_db_path = "data/runtime/market_csi300_500_latest.db"
+runtime_csi300_500_db_path = "data/runtime/market_csi300_500_latest.db"
+runtime_csi1000_db_path = "data/runtime/market_csi1000_latest.db"
+runtime_csi2000_db_path = "data/runtime/market_csi2000_latest.db"
+meta_constituents_db_path = "data/meta/index_constituents.db"
+enable_index_aware_db = true
+cross_index_hold_enable = false
+cross_index_candidates = []
+runtime_window_days = 548
+archive_overflow_days = 61
+archive_move_chunk_days = 61
+start_date = "2025-01-01"
+end_date = "2025-12-23"
+benchmark_index = "399303.XSHE"
+
+[strategy]
+strategy_names = ["csi1000_enhanced"]
+strategy_weights = [1.0]
+buy_score_threshold = 0.00
+sell_score_threshold = 0.86
+entry_interval_days = 3
+top_k = 6
+max_positions = 3
+stop_loss_pct = 0.04
+trailing_stop_pct = 0.10
+min_hold_days = 2
+weekly_auto_weight = false
+dual_layer_enable = false
+value_filter_strict = false
+require_above_ma120 = false
+require_above_ma200 = false
+ma_trend_confirm_days = 0
+anti_fomo_filter_enable = true
+anti_fomo_ret5_threshold = 0.10
+anti_fomo_vol_ratio_threshold = 2.2
+anti_fomo_upper_shadow_threshold = 0.45
+allow_short_below_ma200_exception = true
+ma200_exception_min_ret5 = 0.03
+ma200_exception_vol_ratio_min = 1.2
+ma200_exception_vol_ratio_max = 3.2
+open_vol_min = 0.008
+open_vol_max = 0.045
+max_single_trade_risk_pct = 0.015
+max_single_position_loss_pct = 0.05
+max_total_exposure_pct = 1.00
+market_regime_gate_enable = false
+market_regime_min_win_prob = 0.55
+market_regime_min_breadth = 0.50
+regime_param_switch_enable = true
+regime_switch_breadth_risk_on = 0.60
+regime_switch_breadth_risk_off = 0.44
+regime_switch_top_k_delta_on = 0
+regime_switch_top_k_delta_off = -1
+regime_switch_sell_thr_delta_on = -0.02
+regime_switch_sell_thr_delta_off = 0.02
+regime_switch_entry_interval_mult_on = 0.5
+regime_switch_entry_interval_mult_off = 2.0
+regime_switch_exposure_mult_on = 1.0
+regime_switch_exposure_mult_off = 0.74
+signal_weighted_allocation_enable = false
+signal_weighted_power = 1.2
+signal_weighted_max_ratio = 0.40
+monthly_dynamic_exposure_enable = true
+monthly_exposure_min_pct = 0.80
+monthly_exposure_max_pct = 1.00
+crash_ret5_threshold = -0.08
+crash_ret20_threshold = -0.14
+crash_breadth_threshold = 0.25
+crash_cooldown_days = 1
+pause_after_consecutive_loss_days = 2
+pause_after_loss_pause_days = 1
+trend_extend_hold = true
+dynamic_trailing_stop_enable = false
+sell_point_rule_enable = false
+
+[daemon]
+preopen_scan_threads = 16
+
+[execution]
+initial_cash = 100000
+buy_fee = 0.0003
+sell_fee = 0.0013
+slippage_bps = 5.0

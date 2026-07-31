@@ -1,0 +1,65 @@
+# Paper trading configuration — no gateway dependency.
+# Copy of live_qmt_http.toml with broker_type=paper.
+
+[data]
+source = "sqlite"
+sqlite_db_path = "data/runtime/market_csi300_500_latest.db"
+runtime_csi300_500_db_path = "data/runtime/market_csi300_500_latest.db"
+runtime_csi1000_db_path = "data/runtime/market_csi1000_latest.db"
+runtime_csi2000_db_path = "data/runtime/market_csi2000_latest.db"
+meta_constituents_db_path = "data/meta/index_constituents.db"
+enable_index_aware_db = true
+cross_index_hold_enable = true
+cross_index_candidates = ["000905.XSHG"]
+benchmark_index = "000852.XSHG"
+start_date = "2025-01-01"
+end_date = "2025-12-23"
+# No realtime quote source — use SQLite historical data
+realtime_quote_source = ""
+
+[strategy]
+strategy_names = ["csi1000_enhanced"]
+strategy_weights = [1.0]
+buy_score_threshold = 0.00
+sell_score_threshold = 0.94
+top_k = 4
+max_positions = 4
+stop_loss_pct = 0.05
+trailing_stop_pct = 0.10
+entry_interval_days = 2
+min_hold_days = 2
+anti_fomo_filter_enable = true
+anti_fomo_ret5_threshold = 0.10
+anti_fomo_vol_ratio_threshold = 2.2
+anti_fomo_upper_shadow_threshold = 0.45
+monthly_dynamic_exposure_enable = true
+monthly_exposure_min_pct = 0.80
+monthly_exposure_max_pct = 1.00
+crash_ret5_threshold = -0.08
+crash_ret20_threshold = -0.14
+crash_breadth_threshold = 0.25
+crash_cooldown_days = 1
+regime_param_switch_enable = true
+regime_switch_breadth_risk_on = 0.60
+regime_switch_breadth_risk_off = 0.44
+regime_switch_sell_thr_delta_on = -0.02
+regime_switch_sell_thr_delta_off = 0.02
+regime_switch_entry_interval_mult_on = 0.5
+regime_switch_entry_interval_mult_off = 2.0
+regime_switch_exposure_mult_on = 1.0
+regime_switch_exposure_mult_off = 0.74
+
+[daemon]
+broker_type = "paper"
+dry_run = true
+poll_interval_sec = 5
+preopen_scan_threads = 8
+execution_plan_path = "data/runtime/live_execution_plan.json"
+preopen_use_execution_plan_watchlist = true
+preopen_scan_top_k = 10
+
+[execution]
+initial_cash = 100000
+buy_fee = 0.0003
+sell_fee = 0.0013
+slippage_bps = 5.0

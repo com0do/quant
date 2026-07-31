@@ -1,0 +1,102 @@
+name: Daily Backtest Check
+
+on:
+  push:
+    branches: [main]
+  schedule:
+    # 每个交易日 15:30 CST (07:30 UTC) 盘后运行
+    - cron: '30 7 * * 1-5'
+  workflow_dispatch:
+    inputs:
+      config:
+        description: 'Config file to backtest'
+        required: false
+        default: 'config/final_freeze_2025.toml'
+
+jobs:
+  backtest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: uv sync --frozen
+
+      - name: Restore data cache
+        id: cache-data
+        uses: actions/cache@v4
+        with:
+          path: data/
+          key: quant-data-${{ github.run_id }}
+          restore-keys: |
+            quant-data-
+
+      - name: Run backtest
+        id: backtest
+        run: |
+          CONFIG="${{ inputs.config || 'config/final_freeze_2025.toml' }}"
+          echo "Running backtest with config: $CONFIG"
+          uv run python main.py --mode backtest --config "$CONFIG" 2>&1 | tee backtest_output.txt
+
+      - name: Parse metrics
+        id: metrics
+        if: success()
+        run: |
+          METRICS_FILE="output/backtest_metrics.json"
+          if [ -f "$METRICS_FILE" ]; then
+            cat "$METRICS_FILE" | python3 -c "
+      import json, sys
+      m = json.load(sys.stdin)
+      print(f'ann_return={m[\"ann_return\"]:.4f}')
+      print(f'excess_ann_return={m[\"excess_ann_return\"]:.4f}')
+      print(f'sharpe={m[\"sharpe\"]:.4f}')
+      print(f'max_drawdown={m[\"max_drawdown\"]:.4f}')
+      print(f'trade_count={m[\"trade_count\"]}')
+      print(f'final_equity={m[\"final_equity\"]:.2f}')
+      " > $GITHUB_OUTPUT
+          else
+            echo "WARNING: No backtest metrics found (data may be missing)"
+            echo "skipped=true" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Check for drift
+        if: steps.metrics.outputs.skipped != 'true'
+        run: |
+          echo "### Backtest Results" >> $GITHUB_STEP_SUMMARY
+          echo "| Metric | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|--------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Annual Return | ${{ steps.metrics.outputs.ann_return }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Excess Return | ${{ steps.metrics.outputs.excess_ann_return }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Sharpe | ${{ steps.metrics.outputs.sharpe }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Max Drawdown | ${{ steps.metrics.outputs.max_drawdown }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Trade Count | ${{ steps.metrics.outputs.trade_count }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Final Equity | ${{ steps.metrics.outputs.final_equity }} |" >> $GITHUB_STEP_SUMMARY
+
+          # Drift check: alert if Sharpe drops below 1.0 or max drawdown exceeds 20%
+          SHARPE=$(echo "${{ steps.metrics.outputs.sharpe }}" | awk '{print ($1+0)}')
+          DRAWDOWN=$(echo "${{ steps.metrics.outputs.max_drawdown }}" | awk '{print ($1+0)}')
+
+          if [ "$(echo "$SHARPE < 1.0" | bc -l)" -eq 1 ]; then
+            echo "⚠️ WARNING: Sharpe ratio ($SHARPE) below 1.0 threshold!" >> $GITHUB_STEP_SUMMARY
+          fi
+          if [ "$(echo "$DRAWDOWN < -0.20" | bc -l)" -eq 1 ]; then
+            echo "⚠️ WARNING: Max drawdown ($DRAWDOWN) exceeds -20% threshold!" >> $GITHUB_STEP_SUMMARY
+          fi
+
+      - name: Upload backtest artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backtest-results
+          path: |
+            output/backtest_metrics.json
+            output/backtest_trades.csv
+            output/backtest_equity_curve.csv
+          retention-days: 30

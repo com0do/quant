@@ -1,0 +1,70 @@
+name: Weekly Factor Analysis
+
+on:
+  schedule:
+    # 每周六 08:00 CST (00:00 UTC) 运行因子分析
+    - cron: '0 0 * * 6'
+  workflow_dispatch:
+
+jobs:
+  factor-analyze:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: uv sync --frozen
+
+      - name: Restore data cache
+        uses: actions/cache@v4
+        with:
+          path: data/
+          key: quant-data-${{ github.run_id }}
+          restore-keys: |
+            quant-data-
+
+      - name: Run factor analysis
+        id: factors
+        run: |
+          uv run python main.py --mode factor-analyze --config config/final_freeze_2025.toml 2>&1 | tee factor_output.txt
+
+      - name: Parse factor results
+        if: success()
+        run: |
+          echo "### Factor Analysis Results" >> $GITHUB_STEP_SUMMARY
+          if [ -f output/factor_ic_ir.csv ]; then
+            echo '```csv' >> $GITHUB_STEP_SUMMARY
+            head -20 output/factor_ic_ir.csv >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+          fi
+          if [ -f output/factor_ranked_summary.csv ]; then
+            echo '```csv' >> $GITHUB_STEP_SUMMARY
+            cat output/factor_ranked_summary.csv >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+          fi
+          if [ -f output/factor_layer_returns.csv ]; then
+            echo "Layer returns available in artifacts." >> $GITHUB_STEP_SUMMARY
+          fi
+          if [ ! -f output/factor_ic_ir.csv ] && [ ! -f output/factor_ranked_summary.csv ]; then
+            echo "⚠️ No factor data available. Run JQ data sync first." >> $GITHUB_STEP_SUMMARY
+          fi
+
+      - name: Upload factor artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: factor-analysis-results
+          path: |
+            output/factor_ic_ir.csv
+            output/factor_layer_returns.csv
+            output/factor_turnover.csv
+            output/factor_single_perf.csv
+            output/factor_ranked_summary.csv
+          retention-days: 90

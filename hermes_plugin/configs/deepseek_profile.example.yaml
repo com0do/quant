@@ -1,0 +1,27 @@
+# 参考的 hermes profile config.yaml 片段。
+#
+# 存在两个地方可能需要合并：
+#   - profile config：       ~/.hermes/profiles/quant/config.yaml
+#   - profile 环境变量：      ~/.hermes/profiles/quant/.env
+#
+# 如果 hermes profile quant --clone 已经从当前 profile 复制过来 DeepSeek 相关配置，
+# 通常不需要重复写这里；只在初次配 profile 或从零建 profile 时用得上。
+
+providers:
+  deepseek:
+    api_key: ${DEEPSEEK_API_KEY}                    # 从 profile 的 .env 读
+    base_url: https://api.deepseek.com/v1
+    default_model: deepseek-chat
+    models:
+      - id: deepseek-chat
+        display_name: DeepSeek Chat
+        context_window: 65536
+      - id: deepseek-reasoner
+        display_name: DeepSeek Reasoner (R1)
+        context_window: 65536
+
+agent:
+  default_model: deepseek/deepseek-chat             # provider/model 格式
+  enabled_toolsets:
+    - core                                          # hermes 内置：文件/终端/搜索等
+    - quant                                         # 本 plugin 提供

@@ -16,6 +16,14 @@ wheels/
 output/*
 !output/backtest_metrics.json
 !output/optimize_fast_summary.json
+!output/gbm_train_summary.json
+!output/nlp_analyze_summary.json
+
+# ML artifacts (models are trained locally / downloaded on demand; never in git)
+data/models/
+data/hermes_cache/
+data/nlp/
+!data/nlp/.gitkeep
 
 # Local databases — stored on external HDD via symlink (data -> ~/HHD/stock/data)
 # The symlink itself is gitignored; actual data lives outside the repo

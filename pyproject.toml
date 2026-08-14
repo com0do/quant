@@ -18,6 +18,16 @@ dependencies = [
   "yfinance>=0.2.66",
 ]
 
+[project.optional-dependencies]
+# GBM 因子聚合策略（gbm-train / gbm_multifactor 策略）需要 lightgbm。
+# 未安装时：策略会降级为中性分，主链路不受影响。安装：`uv sync --extra ml`
+ml = [
+  "lightgbm>=4.5.0",
+]
+# LLM 层（--mode nlp-analyze，直连 DeepSeek）：只用 requests，已在主依赖里，无需额外声明。
+# Hermes agent 层（--mode hermes-chat）：hermes-agent 装到 ~/.hermes/（独立 Py 3.11 venv），
+# 通过 subprocess 桥。所以**不作为本工程的 pip 依赖**——用 `bash quant/ml/hermes/setup.sh` 安装。
+
 [dependency-groups]
 dev = [
   "ipykernel>=7.2.0",

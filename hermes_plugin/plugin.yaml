@@ -1,0 +1,35 @@
+id: quant
+name: Quant A-share plugin
+version: 0.1.0
+description: >
+  A-share quantitative research toolkit for Hermes.
+  Exposes 5 tools (kbars / fundamentals / announcements / factors / backtest_slice)
+  and 4 skills (analyst_zoe / info_charles / risk_kris / trader_ethan).
+
+author: quant-repo
+homepage: https://github.com/com0do/quant
+
+# Env vars this plugin needs. Filled into the profile's .env at setup time.
+requires_env:
+  - name: QUANT_REPO_PATH
+    description: Absolute path to the quant repo (folder containing pyproject.toml)
+    prompt: Absolute path to your quant repo
+    example: /home/xincui/code/quant
+
+  - name: DEEPSEEK_API_KEY
+    description: DeepSeek API key (used as the model backend for Hermes)
+    password: true
+    url: https://platform.deepseek.com
+
+# Toolset this plugin ships. Enable via profile's config.yaml:
+#   agent:
+#     enabled_toolsets: [core, quant]
+toolsets:
+  - id: quant
+    description: A-share market data & factor tooling
+    tools:
+      - get_kbars
+      - get_fundamentals
+      - get_announcements
+      - compute_factor
+      - run_backtest_slice

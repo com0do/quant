@@ -189,3 +189,116 @@ def run_mode_consistency_app(config_path: str | None = None) -> None:
 def run_walk_forward_app(config_path: str | None = None) -> None:
     """Walk-forward backtest with rolling train/validation windows."""
     run_walk_forward(config_path=config_path or "config/final_freeze_2025.toml")
+
+
+def run_gbm_train_app(
+    config_path: str | None = None,
+    db_path: str | None = None,
+    start_date: str = "2023-01-01",
+    end_date: str = "2025-06-30",
+    forward_days: int = 5,
+    model_path: str = "data/models/gbm_multifactor.txt",
+) -> None:
+    """Train the GBM multifactor aggregator (LightGBM)."""
+    from quant.ml.gbm.factor_gbm import run_train
+
+    metrics = run_train(
+        db_path=db_path,
+        start_date=start_date,
+        end_date=end_date,
+        forward_days=forward_days,
+        model_path=model_path,
+        config_path=config_path,
+    )
+    Path("output").mkdir(exist_ok=True)
+    Path("output/gbm_train_summary.json").write_text(
+        json.dumps(metrics, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+
+
+def run_nlp_analyze_app(
+    input_glob: str = "data/nlp/inbox/*.jsonl",
+    db_path: str = "data/nlp/signals.db",
+    limit: int = 0,
+    dry_run: bool = False,
+) -> None:
+    """Run the LLM (DeepSeek) announcement pipeline: JSONL → SQLite structured signals.
+
+    This is a **single-shot structured extraction**. For multi-step agent workflows
+    (查行情 + 查公告 + 判断) see `--mode hermes-chat`.
+    """
+    from quant.ml.llm.announcement_pipeline import run_batch
+
+    stats = run_batch(input_glob=input_glob, db_path=db_path, limit=limit, dry_run=dry_run)
+    Path("output").mkdir(exist_ok=True)
+    Path("output/nlp_analyze_summary.json").write_text(
+        json.dumps(stats, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+    print(json.dumps(stats, ensure_ascii=False, indent=2))
+
+
+def run_hermes_chat_app(
+    prompt: str | None = None,
+    skill: str | None = None,
+    code: str | None = None,
+    codes: str | None = None,
+    date: str | None = None,
+    start_date: str | None = None,
+    end_date: str | None = None,
+    profile: str = "quant",
+    toolsets: str = "core,quant",
+    model: str | None = None,
+    timeout_sec: int = 600,
+) -> None:
+    """Talk to hermes-agent via `hermes -z` CLI, scoped to a profile.
+
+    Two usage modes:
+    1. Free-form:   --prompt "..."   (skill 参数留空)
+    2. Skill-first: --skill analyst_zoe --code 000001.XSHE --date 2025-08-01
+
+    Profile 隔离：默认走 profile "quant"（`bash hermes_plugin/setup.sh` 创建），
+    不动你已有的默认 profile。可通过 `--profile` 换目标 profile。
+    """
+    from quant.ml.hermes import runner
+
+    if skill:
+        extra_prompt = prompt.strip() if prompt else None
+        if codes and not code:
+            extra_prompt = ((extra_prompt + "\n") if extra_prompt else "") + f"股票池：{codes}"
+        result = runner.run_skill(
+            skill=skill,
+            code=code,
+            date=date,
+            start_date=start_date,
+            end_date=end_date,
+            extra_prompt=extra_prompt,
+            profile=profile,
+            timeout_sec=timeout_sec,
+        )
+    else:
+        if not prompt:
+            print(json.dumps({"error": "one of --prompt or --skill is required"}, ensure_ascii=False))
+            return
+        extra = {"code": code, "codes": codes, "date": date,
+                 "start_date": start_date, "end_date": end_date}
+        extra = {k: v for k, v in extra.items() if v}
+        result = runner.chat(
+            prompt,
+            profile=profile,
+            toolsets=toolsets,
+            model=model,
+            timeout_sec=timeout_sec,
+            extra=extra or None,
+        )
+
+    Path("output").mkdir(exist_ok=True)
+    Path("output/hermes_chat_last.json").write_text(
+        json.dumps(result, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+    if "response" in result:
+        print(result["response"])
+    else:
+        print(json.dumps(result, ensure_ascii=False, indent=2))

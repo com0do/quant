@@ -1,6 +1,7 @@
 # %%
 import matplotlib.pyplot as plt
 import pandas as pd
+import datetime
 from pathlib import Path
 import warnings
 
@@ -203,7 +204,103 @@ def run_get_bars_fq_experiment(
         "ratio_fixed": ratio_fixed,
     }
 
+RUN_GET_BARS_FQ_EXPERIMENT = False
+if RUN_GET_BARS_FQ_EXPERIMENT:
+    bars_result = run_get_bars_fq_experiment()
+    print(bars_result["bars_none"].head())
+    print(bars_result["bars_pre_today"].head())
+    print(bars_result["bars_fixed"].head())
+    print(bars_result["wide_none"].tail())
+    print(bars_result["wide_pre_today"].tail())
+    print(bars_result["wide_fixed"].tail())
+    print(bars_result["ratio_pre"].tail())
+    print(bars_result["ratio_fixed"].tail())
 
-bars_result = run_get_bars_fq_experiment()
+# %%
+def run_bonus_filter_may_branch_test(
+    *,
+    jq_api,
+    stock_list: list[str],
+    end_date: str = "2025-09-20",
+):
+    if not stock_list:
+        raise ValueError("stock_list is empty")
+
+    end_dt = pd.to_datetime(end_date).to_pydatetime()
+    start_date = datetime.datetime(year=end_dt.year, month=1, day=1)
+
+    # 单步调试：先拉 code.in_(stock_list) 的基础集合，再逐步过滤并打印数量变化
+    q = jq_api.query(
+        jq_api.finance.STK_XR_XD.code,
+        jq_api.finance.STK_XR_XD.company_name,
+        jq_api.finance.STK_XR_XD.board_plan_pub_date,
+        jq_api.finance.STK_XR_XD.implementation_pub_date,
+        jq_api.finance.STK_XR_XD.bonus_amount_rmb,
+        jq_api.finance.STK_XR_XD.bonus_ratio_rmb,
+    ).filter(
+        jq_api.finance.STK_XR_XD.code.in_(stock_list),
+        jq_api.finance.STK_XR_XD.board_plan_pub_date > start_date,
+        jq_api.finance.STK_XR_XD.implementation_pub_date <= end_dt,
+        jq_api.finance.STK_XR_XD.bonus_ratio_rmb > 0,
+    )
+    expected_bonus_df = jq_api.finance.run_query(q)
+    if expected_bonus_df is None or expected_bonus_df.empty:
+        print("expected_bonus_df is empty after SQL filters")
+        return pd.DataFrame()
+
+    print(
+        f"[debug] sql-filtered rows={len(expected_bonus_df)}, "
+        f"unique_codes={expected_bonus_df['code'].nunique()}"
+    )
+
+    bonus_list = expected_bonus_df["code"].unique().tolist()
+    # 与策略对齐：优先使用 history；本地 jqdatasdk 无 history 时回退到 get_price
+    if hasattr(jq_api, "history"):
+        price_df = jq_api.history(
+            1,
+            unit="1d",
+            field="close",
+            security_list=bonus_list,
+            df=True,
+            skip_paused=False,
+            fq="pre",
+        )
+        price_df = price_df.T
+        price_df.rename(columns={price_df.columns[0]: "Close_now"}, inplace=True)
+        price_df["code"] = price_df.index
+    else:
+        px = jq_api.get_price(
+            bonus_list,
+            end_date=end_dt,
+            count=1,
+            frequency="daily",
+            fields=["close"],
+            panel=False,
+            fq="pre",
+        )
+        if px is None or px.empty:
+            print("price data is empty")
+            return pd.DataFrame()
+        price_df = (
+            px[["code", "close"]]
+            .rename(columns={"close": "Close_now"})
+            .drop_duplicates(subset=["code"])
+        )
+    merged = pd.merge(expected_bonus_df, price_df, on=("code",), how="left")
+    merged["bonus_ratio"] = merged["bonus_ratio_rmb"] / merged["Close_now"]
+    merged = merged.sort_values(by="bonus_ratio", ascending=False)
+    print(merged[["code", "company_name", "bonus_ratio_rmb", "Close_now", "bonus_ratio"]].head(20))
+    return merged
+
+
+RUN_BONUS_MAY_BRANCH_TEST = True
+if RUN_BONUS_MAY_BRANCH_TEST:
+    with jq_client.session() as jq_api:
+        sample_stocks = jq_api.get_index_stocks("399101.XSHE", date="2025-05-20")[:80]
+        bonus_debug_df = run_bonus_filter_may_branch_test(
+            jq_api=jq_api,
+            stock_list=sample_stocks,
+            end_date="2025-09-20",
+        )
 
 # %%

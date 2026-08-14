@@ -8,6 +8,7 @@ from quant.stock_strategy.low_heat_quality_rebound import LowHeatQualityReboundS
 from quant.stock_strategy.price_only_cross_section import PriceOnlyCrossSectionStrategy
 from quant.stock_strategy.value_activity_dow import ValueActivityDowStrategy
 from quant.stock_strategy.simple_3factor import Simple3FactorStrategy, MomentumQualityStrategy
+from quant.stock_strategy.gbm_multifactor import GbmMultifactorStrategy
 
 
 def build_strategy(name: str):
@@ -30,4 +31,6 @@ def build_strategy(name: str):
         return Simple3FactorStrategy()
     if name == "mom_quality":
         return MomentumQualityStrategy()
+    if name == "gbm_multifactor":
+        return GbmMultifactorStrategy()
     raise KeyError(f"unknown strategy: {name}")

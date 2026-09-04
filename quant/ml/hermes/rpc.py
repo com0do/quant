@@ -1,12 +1,12 @@
-"""Quant RPC endpoint：Hermes plugin 通过 subprocess 调这里，跑本仓库 Py 3.12 的代码。
+"""Quant RPC endpoint: the Hermes plugin calls here via subprocess to run this repo's Py 3.12 code.
 
 Usage:
     uv run python -m quant.ml.hermes.rpc <cmd> <json_args>
 
-- <cmd>：get_kbars / get_fundamentals / get_announcements / compute_factor / run_backtest_slice
-- <json_args>：一个 JSON object 字符串
+- <cmd>: get_kbars / get_fundamentals / get_announcements / compute_factor / run_backtest_slice
+- <json_args>: a JSON object string
 
-输出：一行 JSON 到 stdout。错误统一形如 {"error": ...}，返回码非 0。
+Output: one line of JSON on stdout. Errors always look like {"error": ...} with a non-zero exit code.
 """
 
 from __future__ import annotations
@@ -19,9 +19,9 @@ from typing import Any
 
 
 def _resolve_db_path() -> str:
-    """按顺序：config → runtime db → market_cache_csi1000_1y → market_cache。"""
+    """In order: config -> runtime db -> market_cache_csi1000_1y -> market_cache."""
     try:
-        from quant.config import load_config  # 允许失败：config 可能没准备好
+        from quant.config import load_config  # allowed to fail: the config may not be ready
         cfg = load_config()
         for candidate in (cfg.data.runtime_csi1000_db_path, cfg.data.sqlite_db_path):
             if candidate and Path(candidate).exists():
@@ -139,7 +139,7 @@ def compute_factor(code: str, factor_name: str, date: str) -> dict[str, Any]:
 
 
 def run_backtest_slice(strategy: str, start_date: str, end_date: str) -> dict[str, Any]:
-    """跑一段小范围回测：单策略 + 短窗口。**慢**（可能到 1 分钟）——agent 请节制使用。"""
+    """Run a small backtest: single strategy + short window. **Slow** (up to ~1 minute); agents should use it sparingly."""
     try:
         from quant.backtest.engine import run_backtest
         from quant.config import load_config

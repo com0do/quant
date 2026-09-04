@@ -9,10 +9,10 @@ GET_KBARS = {
     "parameters": {
         "type": "object",
         "properties": {
-            "code": {"type": "string", "description": "股票代码，如 000001.XSHE / 600519.XSHG"},
-            "start_date": {"type": "string", "description": "开始日期 YYYY-MM-DD"},
-            "end_date": {"type": "string", "description": "结束日期 YYYY-MM-DD"},
-            "limit": {"type": "integer", "description": "最多返回多少行（默认 500）", "default": 500},
+            "code": {"type": "string", "description": "Stock code, e.g. 000001.XSHE / 600519.XSHG"},
+            "start_date": {"type": "string", "description": "Start date YYYY-MM-DD"},
+            "end_date": {"type": "string", "description": "End date YYYY-MM-DD"},
+            "limit": {"type": "integer", "description": "Maximum number of rows to return (default 500)", "default": 500},
         },
         "required": ["code", "start_date", "end_date"],
     },

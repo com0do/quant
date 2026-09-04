@@ -1,10 +1,10 @@
-"""GBM 因子聚合。
+"""GBM factor aggregation.
 
-用 LightGBM 学一个非线性排序器，替代 simple_3factor 里的线性加权。
-- 训练：`quant.ml.gbm.factor_gbm.run_train(...)`（也可通过 `main.py --mode gbm-train`）
-- 推理：`quant.stock_strategy.gbm_multifactor.GbmMultifactorStrategy`
+Uses LightGBM to learn a non-linear ranker that replaces the linear weighting in simple_3factor.
+- Training: `quant.ml.gbm.factor_gbm.run_train(...)` (also available via `main.py --mode gbm-train`)
+- Inference: `quant.stock_strategy.gbm_multifactor.GbmMultifactorStrategy`
 
-lightgbm 是可选依赖：strategy 会在模型缺失时降级为中性分（不打断主链路）。
+lightgbm is an optional dependency: when the model is missing the strategy degrades to a neutral score (the main flow is not interrupted).
 """
 
 from quant.ml.gbm.factor_gbm import (

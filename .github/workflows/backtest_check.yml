@@ -1,11 +1,9 @@
 name: Daily Backtest Check
 
+# Backtest drift check: data comes from the home node (optional R2 cold backup). Runs on push to main or manually.
 on:
   push:
     branches: [main]
-  schedule:
-    # 每个交易日 15:30 CST (07:30 UTC) 盘后运行
-    - cron: '30 7 * * 1-5'
   workflow_dispatch:
     inputs:
       config:
@@ -27,43 +25,48 @@ jobs:
           python-version: '3.12'
 
       - name: Install dependencies
-        run: uv sync --frozen
+        run: |
+          uv sync --frozen
+          sudo apt-get install -y -qq rclone xz-utils sqlite3
 
-      - name: Restore data cache
-        id: cache-data
-        uses: actions/cache@v4
-        with:
-          path: data/
-          key: quant-data-${{ github.run_id }}
-          restore-keys: |
-            quant-data-
+      - name: Pull data snapshot from R2
+        env:
+          R2_ACCESS_KEY_ID:     ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_ENDPOINT:          ${{ secrets.R2_ENDPOINT }}
+          R2_BUCKET:            ${{ secrets.R2_BUCKET }}
+          R2_HOSTNAME_PREFIX:   ${{ secrets.R2_HOSTNAME_PREFIX }}
+        run: bash scripts/ci_pull_r2_data.sh
 
       - name: Run backtest
         id: backtest
         run: |
           CONFIG="${{ inputs.config || 'config/final_freeze_2025.toml' }}"
           echo "Running backtest with config: $CONFIG"
+          if [ ! -f data/runtime/market_csi1000_latest.db ]; then
+            echo "::warning::No data present (R2 secrets not configured); skipping backtest"
+            echo "skipped=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
           uv run python main.py --mode backtest --config "$CONFIG" 2>&1 | tee backtest_output.txt
 
       - name: Parse metrics
         id: metrics
-        if: success()
+        if: success() && steps.backtest.outputs.skipped != 'true'
         run: |
           METRICS_FILE="output/backtest_metrics.json"
           if [ -f "$METRICS_FILE" ]; then
-            cat "$METRICS_FILE" | python3 -c "
-      import json, sys
-      m = json.load(sys.stdin)
-      print(f'ann_return={m[\"ann_return\"]:.4f}')
-      print(f'excess_ann_return={m[\"excess_ann_return\"]:.4f}')
-      print(f'sharpe={m[\"sharpe\"]:.4f}')
-      print(f'max_drawdown={m[\"max_drawdown\"]:.4f}')
-      print(f'trade_count={m[\"trade_count\"]}')
-      print(f'final_equity={m[\"final_equity\"]:.2f}')
-      " > $GITHUB_OUTPUT
+            {
+              printf 'ann_return=%.4f\n'        "$(jq -r '.ann_return'        "$METRICS_FILE")"
+              printf 'excess_ann_return=%.4f\n' "$(jq -r '.excess_ann_return' "$METRICS_FILE")"
+              printf 'sharpe=%.4f\n'            "$(jq -r '.sharpe'            "$METRICS_FILE")"
+              printf 'max_drawdown=%.4f\n'      "$(jq -r '.max_drawdown'      "$METRICS_FILE")"
+              printf 'trade_count=%s\n'         "$(jq -r '.trade_count'       "$METRICS_FILE")"
+              printf 'final_equity=%.2f\n'      "$(jq -r '.final_equity'      "$METRICS_FILE")"
+            } >> "$GITHUB_OUTPUT"
           else
             echo "WARNING: No backtest metrics found (data may be missing)"
-            echo "skipped=true" >> $GITHUB_OUTPUT
+            echo "skipped=true" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Check for drift

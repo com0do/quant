@@ -1,18 +1,19 @@
-"""Hermes runner：从主 quant venv 起 hermes-agent 会话。
+"""Hermes runner: start a hermes-agent session from the main quant venv.
 
-**只走 `hermes` CLI**，不 import `hermes_agent` Python 包（那个包在 hermes 自己的 Py 3.11
-venv 里，主 venv 是 Py 3.12，import 会失败）。
+**Uses the `hermes` CLI only**; never imports the `hermes_agent` Python package (that package lives
+in hermes' own Py 3.11 venv, while the main venv is Py 3.12, so the import would fail).
 
-实现思路：
+Approach:
     subprocess.run(
         ["hermes", "-z", prompt, "-t", "core,quant"],
         env={..., "HERMES_HOME": "~/.hermes/profiles/quant"},
     )
 
-`hermes -z PROMPT` 是官方的 one-shot 模式，直接把最终回复打到 stdout，不进 TUI。
+`hermes -z PROMPT` is the official one-shot mode: it prints the final reply to stdout and never enters the TUI.
 
-Profile 隔离：默认用 profile `quant`，通过 `HERMES_HOME` 环境变量指到 profile 目录。
-用户装完 `bash hermes_plugin/setup.sh` 后 profile 就已经建好、plugin 已 symlink 好。
+Profile isolation: the default profile is `quant`, selected by pointing the `HERMES_HOME` environment
+variable at the profile directory. After the user runs `bash hermes_plugin/setup.sh`, the profile exists
+and the plugin is already symlinked.
 """
 
 from __future__ import annotations
@@ -31,9 +32,9 @@ DEFAULT_TOOLSETS = "core,quant"
 
 @dataclass
 class HermesInstallation:
-    hermes_bin: str | None                # hermes 可执行文件路径
+    hermes_bin: str | None                # path to the hermes executable
     hermes_root: Path                     # ~/.hermes/
-    profile: str                          # profile 名，例如 "quant"
+    profile: str                          # profile name, e.g. "quant"
     profile_dir: Path                     # ~/.hermes/profiles/<profile>/
     profile_env_file: Path                # ~/.hermes/profiles/<profile>/.env
     plugin_link: Path                     # ~/.hermes/profiles/<profile>/plugins/quant
@@ -58,7 +59,7 @@ class HermesInstallation:
         return self.profile_dir.is_dir() and self.plugin_link.exists()
 
     def diagnose(self) -> dict:
-        """诊断信息，用于 error 分支给用户清晰的下一步指令。"""
+        """Diagnostics: give the user clear next steps in the error branch."""
         return {
             "hermes_bin": self.hermes_bin,
             "hermes_root": str(self.hermes_root),
@@ -76,10 +77,11 @@ def is_installed(profile: str = DEFAULT_PROFILE) -> bool:
 
 
 def _build_env(inst: HermesInstallation) -> dict[str, str]:
-    """给 hermes subprocess 组一份 env。
+    """Build the env for the hermes subprocess.
 
-    - HERMES_HOME 指到 profile 目录 —— 让 hermes 用该 profile 的 config/env/plugins
-    - QUANT_REPO_PATH 默认从 profile .env 读；此处不注入，避免覆盖用户显式配置
+    - HERMES_HOME points at the profile directory, so hermes uses that profile's config/env/plugins
+    - QUANT_REPO_PATH is read from the profile .env by default; it is not injected here so an
+      explicit user setting is never overridden
     """
     env = dict(os.environ)
     env["HERMES_HOME"] = str(inst.profile_dir)
@@ -95,14 +97,14 @@ def chat(
     extra: dict | None = None,
     model: str | None = None,
 ) -> dict:
-    """跑一次 hermes 会话，返回 {"response": ...} 或 {"error": ..., "hint"?: ..., ...}。
+    """Run one hermes session; return {"response": ...} or {"error": ..., "hint"?: ..., ...}.
 
-    prompt：面向 agent 的任务描述
-    profile：hermes profile 名（默认 "quant"）
-    toolsets：逗号分隔的 toolset 列表（默认 "core,quant"）
-    skill：可选，在 prompt 前拼一句 "[Use skill:quant:<skill>]"
-    extra：附加 JSON 上下文，会拼到 prompt 末尾
-    model：可选覆盖模型（provider/model 格式，例如 "deepseek/deepseek-chat"）
+    prompt: task description addressed to the agent
+    profile: hermes profile name (default "quant")
+    toolsets: comma-separated toolset list (default "core,quant")
+    skill: optional; prepends one line "[Use skill:quant:<skill>]" to the prompt
+    extra: additional JSON context, appended to the end of the prompt
+    model: optional model override (provider/model format, e.g. "deepseek/deepseek-chat")
     """
     inst = HermesInstallation.detect(profile)
     if not inst.is_installed():
@@ -123,7 +125,7 @@ def chat(
         parts.append(f"[Use skill:quant:{skill}]")
     parts.append(prompt.strip())
     if extra:
-        parts.append("\n附加上下文（JSON）：\n" + json.dumps(extra, ensure_ascii=False, indent=2))
+        parts.append("\nAdditional context (JSON):\n" + json.dumps(extra, ensure_ascii=False, indent=2))
     final_prompt = "\n\n".join(parts)
 
     cmd: list[str] = [inst.hermes_bin or "hermes", "-z", final_prompt]
@@ -159,10 +161,10 @@ def chat(
 
 
 SKILL_REGISTRY = {
-    "analyst_zoe": "以分析师 Zoe 的口吻，对下面的股票+日期做一份公告/财报深度解读。",
-    "info_charles": "以情报官 Charles 的口吻，聚合近 30 日舆情+研报，给出关键异动列表。",
-    "risk_kris": "以风控官 Kris 的口吻，评估下面持仓/股票的回撤风险与异常信号，给出仓位建议。",
-    "trader_ethan": "以交易员 Ethan 的口吻，基于最近价量结构，给出日内/次日的操作要点（仅供研究，不构成建议）。",
+    "analyst_zoe": "As analyst Zoe, write an in-depth reading of the announcements / financial reports for the stock and date below.",
+    "info_charles": "As intelligence officer Charles, aggregate the last 30 days of sentiment and research reports and list the key anomalies.",
+    "risk_kris": "As risk officer Kris, assess the drawdown risk and anomaly signals of the holdings/stocks below and give position-sizing advice.",
+    "trader_ethan": "As trader Ethan, based on the recent price-volume structure, give intraday / next-day action points (research only, not investment advice).",
 }
 
 
@@ -176,17 +178,17 @@ def run_skill(
     profile: str = DEFAULT_PROFILE,
     timeout_sec: int = 600,
 ) -> dict:
-    """以某个 skill 作为出发点跑一次会话。"""
+    """Run one session starting from a given skill."""
     if skill not in SKILL_REGISTRY:
         return {"error": f"unknown skill: {skill}", "known": list(SKILL_REGISTRY.keys())}
 
     lines = [SKILL_REGISTRY[skill]]
     if code:
-        lines.append(f"股票代码：{code}")
+        lines.append(f"Stock code: {code}")
     if date:
-        lines.append(f"截止日期：{date}")
+        lines.append(f"As-of date: {date}")
     if start_date and end_date:
-        lines.append(f"分析区间：{start_date} 到 {end_date}")
+        lines.append(f"Analysis window: {start_date} to {end_date}")
     if extra_prompt:
         lines.append(extra_prompt.strip())
 

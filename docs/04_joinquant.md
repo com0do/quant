@@ -1,179 +1,184 @@
-# 四、聚宽数据与桥接
+# Part 4: JoinQuant Data and Bridging
 
-> 本篇合并了 3 份聚宽（JoinQuant）相关文档：JQ 试用期到 QMT 实盘的路线图、数据字典与 API 映射、Redis 信号桥。
-> 想复用聚宽的数据或搬入聚宽社区策略时必读。
+> This part merges four JoinQuant-related documents: the roadmap from the JQ trial period to QMT live trading, the data dictionary and API mapping, the Redis signal bridge, and the timing of platform callbacks.
+> Required reading when reusing JoinQuant data or porting JoinQuant community strategies.
 
-## 目录
+## Table of Contents
 
-- [1. JQ 试用期到 QMT 实盘路线图](#1-jq-到-qmt-路线图)
-- [2. JQ 数据字典与 API 映射](#2-jq-数据字典与-api-映射)
-- [3. JQ Redis 信号桥](#3-jq-redis-信号桥)
+- [1. JQ Trial Period to QMT Live Trading Roadmap](#jq-trial-period-to-qmt-live-trading-roadmap-recovered-version)
+- [2. JQ Data Dictionary and API Mapping](#joinquant-jq-sqlite-data-dictionary-and-api-mapping)
+- [3. JQ Redis Signal Bridge](#joinquant-redis-signal-bridge)
+- [4. JoinQuant Callback Timing and Lifecycle](#joinquant-callback-timing-and-lifecycle)
 
 ---
 
-<a id="1-jq-到-qmt-路线图"></a>
-# JQ 试用期到 QMT 实盘路线图（恢复版）
+# JQ Trial Period to QMT Live Trading Roadmap (Recovered Version)
 
-## 阶段 A：JQ 试用窗口（策略评估期）
+## Phase A: JQ Trial Window (Strategy Evaluation Period)
 
-目标：在可用时间窗内尽快筛掉无效策略，固化可用参数。
+Goal: within the available time window, quickly screen out ineffective strategies and lock in usable parameters.
 
-- 数据侧：
-  - 拉取 CSI1000 / 小微盘范围的日线 + 基本面 + 因子快照
-  - SQLite 断点续传，避免重复消耗额度
-- 研究侧：
-  - 先跑 baseline
-  - 再做 scan-optimize / iterative-optimize
-  - 重点观察：超额收益、最大回撤、稳定性
+- Data side:
+  - Pull daily bars + fundamentals + factor snapshots for the CSI1000 / micro-cap universe
+  - SQLite checkpoint-and-resume, to avoid repeatedly consuming quota
+- Research side:
+  - Run the baseline first
+  - Then run scan-optimize / iterative-optimize
+  - Key metrics to watch: excess return, maximum drawdown, stability
 
-## 阶段 B：过渡期（模拟+小资金）
+## Phase B: Transition Period (Simulation + Small Capital)
 
-- 执行层先用 PaperBroker 验证：
+- Validate the execution layer with PaperBroker first:
   - TWAP/VWAP
-  - 超时撤单+追价
-  - 风控触发一致性
-- 用小资金验证实盘偏差：
-  - 滑点
-  - 成交率
-  - 实时风险响应
+  - Cancel on timeout + chase the price
+  - Consistency of risk-control triggers
+- Use small capital to validate live-trading deviation:
+  - Slippage
+  - Fill rate
+  - Real-time risk response
 
-## 阶段 C：QMT 正式实盘（持续评估）
 
-- QMT 成为行情+交易主链路。
-- 每日把交易与行情增量落地 SQLite：
-  - 持仓变化
-  - 成交明细
-  - 执行偏差
-- 周期性复评：
-  - 回测+实盘一致性对比
-  - 参数是否漂移
-  - 是否需要降仓/切换策略
 
-## 关键原则
+## Phase C: Formal QMT Live Trading (Ongoing Evaluation)
 
-- 不追求单次最优参数，追求样本外稳定性。
-- 不以高胜率为唯一目标，优先控制回撤和执行风险。
-- 数据资产持续沉淀，形成策略迭代护城河。
+- QMT becomes the primary market-data + trading path.
+- Persist incremental trading and market data to SQLite every day:
+  - Holdings changes
+  - Fill details
+  - Execution deviation
+- Periodic re-evaluation:
+  - Backtest vs. live-trading consistency comparison
+  - Whether parameters have drifted
+  - Whether to reduce position size / switch strategies
+
+
+
+## Key Principles
+
+- Do not chase the best parameters of a single run; pursue out-of-sample stability.
+- Do not treat a high win rate as the only goal; prioritize controlling drawdown and execution risk.
+- Keep accumulating data assets to build a moat for strategy iteration.
 
 ---
 
-<a id="2-jq-数据字典与-api-映射"></a>
 
-# 聚宽（JQ）SQLite 数据字典与 API 映射
 
-本文档说明本地 SQLite 行情库中每张核心表的含义，以及它们分别对应哪些聚宽 JQData API。
+# JoinQuant (JQ) SQLite Data Dictionary and API Mapping
 
-参考文档：[聚宽 JQData API](https://www.joinquant.com/help/api/doc?name=JQDatadoc&id=9842)
+This document explains what each core table in the local SQLite market database means, and which JoinQuant JQData APIs each one maps to.
 
-## 当前使用的数据库
+Reference: [JoinQuant JQData API](https://www.joinquant.com/help/api/doc?name=JQDatadoc&id=9842)
+
+## Databases Currently in Use
 
 - `data/market_cache_csi1000_1y.db`
 - `data/market_cache_csi2000_1y.db`
 
-两者均由 `scripts/jq_bulk_sync_smallcap.py` 维护。
+Both are maintained by `scripts/jq_bulk_sync_smallcap.py`.
 
-## 表级映射
+## Table-Level Mapping
 
 - `prices_daily`
-  - 用途：每只股票的日 OHLCV 与关键盘面字段。
-  - 关键列：`code`、`date`、`open`、`high`、`low`、`close`、`volume`、`money`、`paused`、`high_limit`、`low_limit`、`avg`、`pre_close`
-  - 主键：`(code, date)`
-  - 数据源 API：`jqdatasdk.get_price(...)`，`frequency="daily"`。
-
+  - Purpose: daily OHLCV and key market fields for each stock.
+  - Key columns: `code`, `date`, `open`, `high`, `low`, `close`, `volume`, `money`, `paused`, `high_limit`, `low_limit`, `avg`, `pre_close`
+  - Primary key: `(code, date)`
+  - Source API: `jqdatasdk.get_price(...)`, `frequency="daily"`.
 - `index_members`
-  - 用途：同步日的指数成分股快照。
-  - 关键列：`index_code`、`date`、`code`
-  - 主键：`(index_code, date, code)`
-  - 数据源 API：`jqdatasdk.get_index_stocks(index_code, date=...)`
-
+  - Purpose: snapshot of index constituents on the sync date.
+  - Key columns: `index_code`, `date`, `code`
+  - Primary key: `(index_code, date, code)`
+  - Source API: `jqdatasdk.get_index_stocks(index_code, date=...)`
 - `fundamentals_snapshot`
-  - 用途：按日期与股票的估值/基本面快照。
-  - 关键列：`date`、`code`、`pe_ratio`、`pb_ratio`、`turnover_ratio`
-  - 主键：`(date, code)`
-  - 数据源 API：`jqdatasdk.get_fundamentals(query(...), date=...)`，取 `valuation.*` 字段。
-
+  - Purpose: valuation/fundamentals snapshot by date and stock.
+  - Key columns: `date`, `code`, `pe_ratio`, `pb_ratio`, `turnover_ratio`
+  - Primary key: `(date, code)`
+  - Source API: `jqdatasdk.get_fundamentals(query(...), date=...)`, taking the `valuation.*` fields.
 - `factors_snapshot`
-  - 用途：用于截面打分的紧凑因子快照。
-  - 关键列：`date`、`code`、`roe`、`market_cap`、`pe_ratio`、`pb_ratio`、`turnover_ratio`
-  - 主键：`(date, code)`
-  - 数据源 API：`jqdatasdk.get_fundamentals(query(...), date=...)`，取 `valuation.*` 与 `indicator.roe`。
-
+  - Purpose: compact factor snapshot used for cross-sectional scoring.
+  - Key columns: `date`, `code`, `roe`, `market_cap`, `pe_ratio`, `pb_ratio`, `turnover_ratio`
+  - Primary key: `(date, code)`
+  - Source API: `jqdatasdk.get_fundamentals(query(...), date=...)`, taking `valuation.*` and `indicator.roe`.
 - `sync_progress`
-  - 用途：日线行情增量同步的断点记录。
-  - 关键列：`code`、`next_date`、`done`、`updated_at`、`last_error`
-  - 使用方式：避免对已完成的价格区间重复拉取。
-
+  - Purpose: checkpoint records for incremental daily-bar sync.
+  - Key columns: `code`, `next_date`, `done`, `updated_at`, `last_error`
+  - Usage: avoids re-fetching price ranges that are already done.
 - `snapshot_progress`
-  - 用途：按交易日进行快照同步的断点记录。
-  - 关键列：`date`、`done`、`updated_at`、`last_error`、`rows_fundamentals`、`rows_factors`
-  - 使用方式：只重试未完成的日期，已完成日期直接跳过。
-
+  - Purpose: checkpoint records for per-trading-day snapshot sync.
+  - Key columns: `date`, `done`, `updated_at`, `last_error`, `rows_fundamentals`, `rows_factors`
+  - Usage: only retry unfinished dates; finished dates are skipped directly.
 - `meta`
-  - 用途：数据库与同步范围的轻量元信息。
-  - 关键列：`key`、`value`（迁移后的表结构会附带 `updated_at`）
-  - 常见 key：`index_code`、`start_date`、`end_date`
+  - Purpose: lightweight metadata about the database and the sync range.
+  - Key columns: `key`, `value` (the migrated table schema also carries `updated_at`)
+  - Common keys: `index_code`, `start_date`, `end_date`
 
-## 为什么会出现 `snapshot_left=0` 但 `snapshot_incomplete_dates>0`
 
-当所有计划中的日期都已经处理完毕（`done=1`），但上游返回的股票数量少于 `prices_daily` 中该日期的成分数量时（例如 999 vs 1000），就会出现这种情况：
 
-- 流水线状态是“所有日期已完成”。
-- 覆盖度仍然不完整，原因来自数据源侧的差异。
+## Why `snapshot_left=0` Can Coexist with `snapshot_incomplete_dates>0`
 
-这是正常情况，不代表本地同步失败。
+This happens when all planned dates have been processed (`done=1`), but the number of stocks returned upstream is smaller than the number of constituents on that date in `prices_daily` (e.g. 999 vs 1000):
 
-## 增量同步机制（无重复拉取）
+- The pipeline status is "all dates done".
+- Coverage is still incomplete, because of differences on the data-source side.
 
-- 价格路径：
-  - 由 `sync_progress.next_date` 与 `done` 控制。
-  - 已完成的 code/日期区间会被跳过。
+This is normal and does not mean the local sync failed.
 
-- 快照路径：
-  - 由 `snapshot_progress.done` 控制。
-  - `scripts/prepare_snapshot_retry.py` 可以选择性地把未完成的日期重置为 `done=0` 来重试。
+## Incremental Sync Mechanism (No Repeated Fetching)
 
-## 当前同步概况（最近一次）
+- Price path:
+  - Controlled by `sync_progress.next_date` and `done`.
+  - Completed code/date ranges are skipped.
+- Snapshot path:
+  - Controlled by `snapshot_progress.done`.
+  - `scripts/prepare_snapshot_retry.py` can selectively reset unfinished dates to `done=0` to retry them.
 
-- CSI1000：`sync_left_price=0`，`snapshot_left=0`
-- CSI2000：`sync_left_price=0`，`snapshot_left=0`
-- 剩余的 `snapshot_incomplete_dates` 表示的是数据源侧当日覆盖不全，而不是本地任务遗漏。
+
+
+## Current Sync Status (Latest Run)
+
+- CSI1000: `sync_left_price=0`, `snapshot_left=0`
+- CSI2000: `sync_left_price=0`, `snapshot_left=0`
+- The remaining `snapshot_incomplete_dates` indicate incomplete same-day coverage on the data-source side, not tasks missed locally.
 
 ---
 
-<a id="3-jq-redis-信号桥"></a>
 
-# 聚宽 Redis 信号桥
 
-## 目的
+# JoinQuant Redis Signal Bridge
 
-这个桥接层让聚宽（JoinQuant）上的策略把低频的下单意图写入 Redis 队列，本地 `quant` 系统消费这些意图，再通过 `xtquant_gateway` / miniQMT 落地为真实委托。
 
-推荐使用场景：
 
-- 日频或准日频调仓
-- 对分钟级模拟盘延迟有容忍度的低频决策
+## Purpose
 
-**不适合高频执行。**
+This bridge lets strategies on JoinQuant write low-frequency order intents into a Redis queue; the local `quant` system consumes those intents and turns them into real orders through `xtquant_gateway` / miniQMT.
 
-## 涉及文件
+Recommended use cases:
 
-- 聚宽策略侧信号模式脚本：
+- Daily or near-daily rebalancing
+- Low-frequency decisions that can tolerate minute-level paper-trading latency
+
+**Not suitable for high-frequency execution.**
+
+## Files Involved
+
+- JoinQuant strategy-side signal-mode script:
   - `test/jq_c1_smallcap_etf_combo.py`
-- 信号数据结构定义：
+- Signal data structure definition:
   - `quant/bridge/jq_signal.py`
-- 本地消费者：
+- Local consumer:
   - `scripts/jq_signal_consumer.py`
-- 已有的执行网关：
+- Existing execution gateway:
   - `quant/gateway/client.py`
   - `scripts/run_xtquant_gateway.py`
 
-## 架构
+
+
+## Architecture
 
 ```mermaid
 flowchart LR
-    jqScript[聚宽策略或研究脚本]
-    redisList[Redis 列表队列]
-    consumer[WSL2 信号消费者]
+    jqScript[JoinQuant strategy or research script]
+    redisList[Redis list queue]
+    consumer[WSL2 signal consumer]
     gatewayClient[GatewayClient]
     xtGateway[Win10 xtquantGateway]
     miniQMT[Win10 miniQMT]
@@ -185,17 +190,25 @@ flowchart LR
     xtGateway --> miniQMT
 ```
 
-## 聚宽侧
 
-### 1. 把策略切到信号模式
 
-在 `test/jq_c1_smallcap_etf_combo.py` 里：
+
+
+## JoinQuant Side
+
+
+
+### 1. Switch the Strategy to Signal Mode
+
+In `test/jq_c1_smallcap_etf_combo.py`:
 
 ```python
 EXEC_MODE = "redis_signal"
 ```
 
-### 2. 配置 Redis 队列
+
+
+### 2. Configure the Redis Queue
 
 ```python
 SIGNAL_QUEUE_CONFIG = {
@@ -213,20 +226,22 @@ SIGNAL_QUEUE_CONFIG = {
 }
 ```
 
-说明：
+Notes:
 
-- 该策略现在会从聚宽研究环境导入 `jq_research_redis_common.py`。
-- `jq_research_redis_common.py` 依赖 `redis-py`，运行 `redis_signal` 模式前必须在研究环境里先装好。
-- `price_mode`：
-  - `latest`：本地消费者以 `price_type=latest` 下单
-  - `limit_last`：本地消费者以 `price_type=limit` 下单，限价取最新报价
-- `hmac_secret`：
-  - 可选但强烈推荐
-  - 消费者侧必须传入相同的 `--hmac-secret`（或环境变量 `JQ_SIGNAL_HMAC_SECRET`）
+- The strategy now imports `jq_research_redis_common.py` from the JoinQuant research environment.
+- `jq_research_redis_common.py` depends on `redis-py`, which must be installed in the research environment before running in `redis_signal` mode.
+- `price_mode`:
+  - `latest`: the local consumer places orders with `price_type=latest`
+  - `limit_last`: the local consumer places orders with `price_type=limit`, with the limit price taken from the latest quote
+- `hmac_secret`:
+  - Optional but strongly recommended
+  - The consumer side must be given the same `--hmac-secret` (or the environment variable `JQ_SIGNAL_HMAC_SECRET`)
 
-## 信号消息结构
 
-队列消息是 JSON，字段如下：
+
+## Signal Message Format
+
+Queue messages are JSON with the following fields:
 
 ```json
 {
@@ -246,27 +261,33 @@ SIGNAL_QUEUE_CONFIG = {
 }
 ```
 
-### 字段含义
 
-- `action`：目前只支持 `target_value`
-- `target_value`：该腿在该标的上的目标名义敞口
-- `client_order_id`：幂等键
-- `generated_at`：用于过期信号拒收
-- `signature`：可选的 HMAC-SHA256 校验签名
 
-## 本地消费者
+### Field Meanings
 
-### 先启动网关
+- `action`: currently only `target_value` is supported
+- `target_value`: the target notional exposure of this leg on this instrument
+- `client_order_id`: idempotency key
+- `generated_at`: used to reject stale signals
+- `signature`: optional HMAC-SHA256 signature
 
-例如：
+
+
+## Local Consumer
+
+
+
+### Start the Gateway First
+
+For example:
 
 ```bash
 uv run python scripts/run_xtquant_gateway.py
 ```
 
-或在 Windows 侧沿用你已有的 miniQMT 启动流程。
+Or reuse your existing miniQMT startup procedure on the Windows side.
 
-### 启动消费者
+### Start the Consumer
 
 ```bash
 uv run python scripts/jq_signal_consumer.py \
@@ -276,7 +297,7 @@ uv run python scripts/jq_signal_consumer.py \
   --hmac-secret "$JQ_SIGNAL_HMAC_SECRET"
 ```
 
-试运行（不真正下单）：
+Dry run (no real orders placed):
 
 ```bash
 uv run python scripts/jq_signal_consumer.py \
@@ -286,76 +307,377 @@ uv run python scripts/jq_signal_consumer.py \
   --dry-run
 ```
 
-## 消费者行为
 
-- 使用 `BRPOPLPUSH` 从 Redis 列表读取
-- 使用处理中列表模拟基本的 ack 语义
-- 拒收过期消息（`--stale-after-sec`）
-- 如果传入 `--hmac-secret`，则校验 HMAC 签名
-- 二级去重：
-  - `processed:{client_order_id}`：最终幂等标记
-  - `inflight:{client_order_id}`：并发中锁
-- 只有处理成功（或明确 no-op）后才写 `processed`，不会在提交前写
-- 失败消息重试至 `--max-retries` 后进入死信
-- 把 `target_value` 换算成目标数量时会用到：
-  - 网关行情
-  - 当前持仓
-  - 手数取整
-- 用差量数量通过 `GatewayClient.submit_order()` 下单
-- 失败的消息进入死信队列：
+
+## Consumer Behavior
+
+- Reads from the Redis list using `BRPOPLPUSH`
+- Uses a processing list to emulate basic ack semantics
+- Rejects stale messages (`--stale-after-sec`)
+- Verifies the HMAC signature if `--hmac-secret` is given
+- Two-level deduplication:
+  - `processed:{client_order_id}`: the final idempotency marker
+  - `inflight:{client_order_id}`: the in-flight concurrency lock
+- `processed` is written only after processing succeeds (or is an explicit no-op), never before submission
+- Failed messages are retried up to `--max-retries` and then moved to the dead-letter queue
+- Converting `target_value` into a target quantity uses:
+  - Gateway quotes
+  - Current holdings
+  - Lot-size rounding
+- Places orders via `GatewayClient.submit_order()` using the delta quantity
+- Failed messages go to the dead-letter queue:
   - `jq:signals:dead`
 
-## 数量换算逻辑
 
-对每条信号：
 
-1. 从网关取账户/持仓/行情
-2. 由 `target_value` 计算目标数量
-3. 对比当前数量
-4. 得出差量数量
-5. 提交：
-   - 差量 > 0：`buy`
-   - 差量 < 0：`sell`
+## Quantity Conversion Logic
 
-以下情况不发单：
+For each signal:
 
-- 信号过期
-- 信号重复
-- 差量为 0
+1. Fetch the account/holdings/quotes from the gateway
+2. Compute the target quantity from `target_value`
+3. Compare with the current quantity
+4. Derive the delta quantity
+5. Submit:
+  - delta > 0: `buy`
+  - delta < 0: `sell`
 
-## 已知限制
+No order is placed in these cases:
 
-- 聚宽模拟盘会有延迟，社区常见建议是留 2 分钟左右的分钟数据缓冲，因此本桥更适合低频用法。
-- 队列消息表示目标名义敞口，不保证成交。
-- 本地实际持仓因拒单或部分成交，可能与聚宽内部“目标持仓”漂移。
-- 首版不把执行结果回写到聚宽端。
-- 首版不在消费者侧做 TWAP/VWAP 切片。
+- The signal is stale
+- The signal is a duplicate
+- The delta is 0
 
-## 当前部署拓扑
 
-推荐并正在使用的分工：
 
-- `Win10`：运行 miniQMT + xtquant + `xtquant_gateway`
-- `WSL2`：运行本仓库（`scripts/jq_signal_consumer.py`、实盘守护、研究助手）
-- 聚宽：向 Redis 发信号（策略模式或研究环境助手）
+## Known Limitations
 
-参考：
+- JoinQuant paper trading has latency; a common community recommendation is to leave about 2 minutes of minute-data buffer, so this bridge is better suited to low-frequency use.
+- A queue message expresses a target notional exposure and does not guarantee a fill.
+- Actual local holdings may drift from JoinQuant's internal "target holdings" because of rejected orders or partial fills.
+- The first version does not write execution results back to the JoinQuant side.
+- The first version does not do TWAP/VWAP slicing on the consumer side.
 
-- [聚宽 API 文档](https://www.joinquant.com/help/api/help#name:api)
-- [请问带 V 的各位，聚宽会员的实时模拟会有延迟吗](https://www.joinquant.com/community/post/detailMobile?postId=62716)
-- [实盘跟模拟回测收益差多少？](https://www.joinquant.com/community/post/detailMobile?page=3&postId=56740)
 
-## 首次上线建议
 
-1. 先保持 `EXEC_MODE = "direct_jq_order"` 做基线验证
-2. 再切到 `redis_signal`
-3. 消费者先 `--dry-run`
-4. 校验行情、数量、方向是否合理
-5. 再切到真实下单
+## Current Deployment Topology
 
-## 未来改进
+Recommended and currently used division of labor:
 
-- 增加回调 sink，把成交/订单状态写回 Redis
-- 支持 `target_pct` 消息
-- 按策略/账户分开的队列 key
-- 若不希望 Redis 直接暴露，可以加一层轻量 HTTP 接入服务
+- `Win10`: runs miniQMT + xtquant + `xtquant_gateway`
+- `WSL2`: runs this repo (`scripts/jq_signal_consumer.py`, the live daemon, research helpers)
+- JoinQuant: sends signals to Redis (strategy mode or research-environment helper)
+
+References:
+
+- [JoinQuant API Docs](https://www.joinquant.com/help/api/help#name:api)
+- [Question for those with a V badge: does JoinQuant members' real-time paper trading have latency?](https://www.joinquant.com/community/post/detailMobile?postId=62716)
+- [How much does live-trading return differ from simulated backtest return?](https://www.joinquant.com/community/post/detailMobile?page=3&postId=56740)
+
+
+
+## First-Launch Recommendations
+
+1. First keep `EXEC_MODE = "direct_jq_order"` for baseline validation
+2. Then switch to `redis_signal`
+3. Have the consumer run with `--dry-run` first
+4. Check that quotes, quantities and directions look reasonable
+5. Then switch to real order placement
+
+
+
+## Future Improvements
+
+- Add a callback sink that writes fill/order status back to Redis
+- Support `target_pct` messages
+- Separate queue keys per strategy/account
+- If you do not want Redis exposed directly, add a lightweight HTTP ingestion service
+
+---
+
+
+
+# JoinQuant Callback Timing and Lifecycle
+
+> All JoinQuant strategy callbacks, run_daily scheduling, and context contents are managed by the JoinQuant engine (jqboson). Not understanding the lifecycle is one of the easiest pitfalls (e.g. `initialize` runs only once in paper trading, so old values on `g.` are not refreshed automatically after you change the code).
+
+
+
+## 4.1 Callback Overview
+
+Ordered by call frequency.
+
+
+| Callback                            | Type           | Trigger timing                                                                          | Times per day            |
+| ----------------------------------- | ---- | ----------------------------- | -------- |
+| `initialize(context)`               | One-off        | When the strategy is **first** created (every backtest run; only at creation for paper/live trading) | 0 or 1                   |
+| `process_initialize(context)`       | Process-level  | Every process start (including daily restarts)                                          | Once per restart         |
+| `after_code_changed(context)`       | Code-level     | Reload after the code is modified (including before every backtest run)                 | When code is modified    |
+| `before_trading_start(context)`     | Daily pre-market  | Before 09:00 on each trading day                                                     | 1                        |
+| `handle_data(context, data)`        | Minute-level   | Every bar (minute or daily)                                                             | 240 (minute frequency)   |
+| `after_trading_end(context)`        | Daily post-market | After 15:30 on each trading day                                                      | 1                        |
+| `on_strategy_end(context)`          | Strategy end   | When a backtest/paper-trading/live-trading run ends                                     | 0 or 1                   |
+| `run_daily(fn, time='HH:MM')`       | Scheduled task | At the specified time on each trading day                                               | Depends on number hooked |
+| `run_weekly(fn, weekday, time)`     | Scheduled task | On the specified weekday each week                                                      | ≤ 1                      |
+| `run_monthly(fn, day, time)`        | Scheduled task | On the specified day each month                                                         | ≤ 1                      |
+| `on_order_response(context, order)` | Event-driven   | Order status change (submitted/filled/canceled/rejected)                                | Depends on number of orders |
+| `on_trade_response(context, trade)` | Event-driven   | Every fill                                                                              | Depends on number of fills  |
+
+
+
+
+## 4.2 Lifecycle Timeline
+
+
+
+### Scenario A: Backtest (every run is a full lifecycle)
+
+```
+[Strategy start]
+├─ initialize(context)               ← once
+├─ after_code_changed(context)       ← once (also runs in backtests)
+│
+├─ Per-trading-day loop:
+│   ├─ before_trading_start(context) ← once pre-market
+│   ├─ 09:30 market open
+│   ├─ handle_data / run_daily hooked functions (in time order)
+│   ├─ 15:00 market close
+│   └─ after_trading_end(context)    ← once post-market
+│
+└─ Backtest ends
+    └─ on_strategy_end(context)      ← once
+```
+
+
+
+### Scenario B: Paper Trading / Live Trading (initial creation)
+
+```
+[Strategy first created]
+├─ initialize(context)               ← once (only once in its entire life!)
+├─ process_initialize(context)       ← once
+├─ after_code_changed(context)       ← once
+│
+├─ Per-trading-day loop (same as backtest)
+│
+└─ ... (keeps running until manually stopped)
+```
+
+
+
+### Scenario C: Paper Trading / Live Trading (restart the next day)
+
+```
+[Process restart (every trading-day morning)]
+├─ process_initialize(context)       ← once per restart
+│  └── (initialize **will not run again**; g. is restored from pickle)
+│
+└─ Continue the per-trading-day loop
+```
+
+
+
+### Scenario D: Paper Trading / Live Trading (after a code change)
+
+```
+[Code saved → JoinQuant hot reload]
+├─ after_code_changed(context)       ← once per code change
+│  └── (initialize does not re-run either; only source-level def changes take effect)
+│
+└─ Continue the per-trading-day loop
+```
+
+
+
+## 4.3 Key Pitfalls & Best Practices
+
+
+
+### Pitfall 1: `initialize` Runs Only Once (Paper/Live Trading)
+
+**Problem**: if you write this in `initialize`:
+
+```python
+def initialize(context):
+    g.stop_loss_pct = 0.15      # assigned only once in its entire life
+```
+
+You change the top-level constant `STOP_LOSS_PCT` to `0.08` and restart the strategy, but `g.stop_loss_pct` is **still 0.15** — because `initialize` does not re-run, and `g.` is restored from pickle with the old value.
+
+**Fix**: also push sensitive parameters in `after_code_changed`:
+
+```python
+def after_code_changed(context):
+    g.stop_loss_pct = STOP_LOSS_PCT   # the module-level constant is the source of truth
+    # re-register run_daily schedules here as well
+```
+
+
+
+### Pitfall 2: Functions Hooked by `run_daily` Must Be Picklable (Module-Level Functions)
+
+**Problem**: JoinQuant's `run_daily` performs a serialization check, and **bound methods / lambdas / closures are all rejected**:
+
+```python
+# ❌ raises InvalidHandle: not serializable
+class MyStrategy:
+    def daily_check(self, context): ...
+
+def initialize(context):
+    strat = MyStrategy()
+    run_daily(strat.daily_check, time='09:35')
+```
+
+**Fix**: define a module-level `def`, then look up the instance inside the function:
+
+```python
+_strategy = None
+
+def _daily_check_dispatch(context):
+    _strategy.daily_check(context)
+
+def initialize(context):
+    global _strategy
+    _strategy = MyStrategy()
+    run_daily(_daily_check_dispatch, time='09:35')
+```
+
+
+
+### Pitfall 3: `run_daily(fn, time='every_bar')` vs `handle_data`
+
+**Both fire every minute** (provided it is a **minute-frequency backtest**); the differences:
+
+
+| Behavior              | `run_daily(..., time='every_bar')` | `handle_data(context, data)`       |
+| ------ | ---------------------------------- | ---------------------------------- |
+| Signature             | `fn(context)`                      | `fn(context, data)`                |
+| Scheduling order      | Sorted by time together with the other run_daily jobs | Called independently, usually last |
+| Use                   | Minute-level stop-loss / risk control (no data object needed) | When you need access to `data[security].last_price` etc. |
+
+
+**Recommendation**: prefer `run_daily(..., time='every_bar')`, which unifies the code path (all scheduling is hooked via run_daily).
+
+### Pitfall 4: `context.run_params.type` Distinguishes Backtest / Paper / Live Trading
+
+```python
+def initialize(context):
+    mode = getattr(context.run_params, 'type', 'backtest')
+    # 'backtest' / 'sim_trade' / 'live_trade'
+    if mode == 'backtest':
+        log.info("Backtest mode; logs will be written to wufu_run.backtest.log")
+```
+
+Use it to add a suffix to log files and to separate live-trading from backtest behavior (e.g. disable certain development logs in live trading).
+
+### Pitfall 5: `context.previous_date` vs `context.current_dt` in Backtests
+
+- `context.previous_date` = the date of the previous **trading day** (`datetime.date` type)
+- `context.current_dt`    = the time of the current bar (`datetime.datetime` type)
+
+**To avoid look-ahead bias in backtests**, always pull data with `previous_date`:
+
+```python
+set_option("avoid_future_data", True)   # enable in initialize to prevent accidental use of future data
+
+df = get_price(code, end_date=context.previous_date, count=20, ...)  # ✅ safe
+df = get_price(code, end_date=context.current_dt, count=20, ...)     # ⚠️ in minute-frequency, the current day's bar may be included
+```
+
+## 4.4 Context Information
+
+```
+context
+├── current_dt          # datetime, logical time of the current bar (e.g. 09:35)
+├── previous_date       # date, previous trading day (commonly used for stock selection / financials)
+├── universe            # stock universe set by set_universe
+├── run_params
+│   ├── start_date / end_date
+│   ├── type            # simple_backtest | full_backtest | sim_trade
+│   └── frequency       # day | minute | tick
+├── portfolio           # overall account (= subportfolios[0] for a single account)
+│   ├── total_value / available_cash / cash
+│   ├── positions_value / returns / starting_cash
+│   ├── positions       # dict, same as long_positions
+│   └── long_positions / short_positions
+└── subportfolios[]     # multiple sub-accounts (stocks/futures/margin trading)
+    ├── available_cash / total_value
+    └── long_positions[code] → Position
+```
+
+## 4.5 Typical Strategy Skeleton
+
+Combining the pitfalls above, a minimal "pitfall-proof" strategy skeleton:
+
+```python
+# ============ Top-level constants (the only place to change parameters) ============
+STOP_LOSS_PCT   = 0.15
+SELL_PROFIT_PCT = 0.03
+
+
+# ============ Lifecycle callbacks ============
+
+def initialize(context):
+    """Runs only once in its lifetime (runs on every backtest run; in paper trading only at creation)."""
+    set_option("avoid_future_data", True)
+    set_option("use_real_price", True)
+    set_slippage(PriceRelatedSlippage(0.0001), type="fund")
+    set_order_cost(OrderCost(..., min_commission=5), type="fund")
+    log.set_level('order', 'error')
+
+    # Initial state on first creation
+    g.holdings = []
+    _apply_config_to_g()          # push the top-level constants into g
+
+
+def process_initialize(context):
+    """Runs on every process start (including daily restarts)."""
+    # Fallback: if g.holdings got lost for some reason, restore the default
+    if not hasattr(g, 'holdings') or g.holdings is None:
+        g.holdings = []
+
+
+def after_code_changed(context):
+    """Runs after every code change (hot update in paper/live trading; also runs on every backtest)."""
+    _apply_config_to_g()          # key: make the new parameters take effect after a code change
+    unschedule_all()
+    run_daily(morning_check,   time='09:35')
+    run_daily(afternoon_trade, time='13:10')
+    run_daily(flush_daily_log, time='15:20')
+
+
+def on_strategy_end(context):
+    """Callback when a backtest / paper-trading / live-trading run ends."""
+    log.info("Strategy ended, final net value = ...")
+
+
+# ============ Helpers (picklable module-level functions) ============
+
+def _apply_config_to_g():
+    """Push the top-level constants into g so new parameters take effect after a code change."""
+    g.stop_loss_pct   = STOP_LOSS_PCT
+    g.sell_profit_pct = SELL_PROFIT_PCT
+
+
+def morning_check(context):
+    """Function hooked by run_daily at 09:35. Must be a module-level free function."""
+    ...
+
+
+def afternoon_trade(context):
+    ...
+
+
+def flush_daily_log(context):
+    ...
+```
+
+
+
+## 4.5 References
+
+- [JoinQuant API Docs · Lifecycle Callbacks](https://www.joinquant.com/help/api/help?name=api#name:-%E7%AD%96%E7%95%A5%E7%9B%B8%E5%85%B3%E5%87%BD%E6%95%B0)
+- [JoinQuant API Docs · run_daily / run_weekly / run_monthly](https://www.joinquant.com/help/api/help?name=api#name:%E5%AE%9A%E6%97%B6%E8%BF%90%E8%A1%8C%E5%87%BD%E6%95%B0)
+- [JoinQuant · Note on Strategy Code Updates Not Taking Effect](https://www.joinquant.com/view/community/detail/13123)
+- Hands-on notes: `docs/08_wufu_strategy.md` §6 (the daily scheduling timeline)
+

@@ -1,110 +1,110 @@
-# 九、参考资料
+# IX. Reference Material
 
-> 本篇合并了 2 份参考文档：会话历史汇总、备看股票笔记。
+> This file merges 2 reference documents: the session history summary and the watchlist stock notes.
 
-## 目录
+## Table of Contents
 
-- [1. 会话历史汇总](#1-会话历史汇总)
-- [2. 备看股票笔记](#2-备看股票笔记)
+- [1. Session History Summary](#1-session-history-summary)
+- [2. Watchlist Stock Notes](#2-watchlist-stock-notes)
 
 ---
 
-<a id="1-会话历史汇总"></a>
-# Quant 项目会话历史汇总
+<a id="1-session-history-summary"></a>
+# Quant Project Session History Summary
 
-## 1. 业务目标
+## 1. Business Goals
 
-- 构建面向 A 股的小盘量化交易系统。
-- 主战场：中证 1000 / 小微盘。
-- 工作流：
-  - 先回测
-  - 再接 QMT 实盘
-  - 持续沉淀实盘数据，用于未来评估/优化
+- Build a small-cap quantitative trading system for A-shares.
+- Main battlefield: CSI 1000 / micro-cap.
+- Workflow:
+  - Backtest first
+  - Then connect to QMT for live trading
+  - Keep accumulating live-trading data for future evaluation/optimization
 
-## 2. 历史功能需求（合并版）
+## 2. Historical Functional Requirements (Merged)
 
-- 模块化架构：
-  - `stock_filter`、`stock_exclusion`、`stock_strategy`、`stock_data`、`backtest`、`execution`、`live`、`tools`
-- 数据：
-  - 接入本地聚宽 SDK（`jqdatasdk`）
-  - 以 SQLite 作为主存储（替代早期 pickle 流程）
-  - 增量同步 + 断点续传
-  - CSI1000 / CSI2000 各自独立的一年期库
-- 策略：
-  - 多策略并行打分 + 加权聚合
-  - 买卖分离
-  - D+2 持仓约束 + 止损 + 移动止损
-- 优化：
-  - 网格 / 迭代式优化
-  - 硬约束（`excess_ann_return > 0`、回撤保护）
-  - stage1 + stage2 使用 vectorbt 预筛
-  - 多进程并行
-- 实盘执行：
-  - QMT mock + 真实适配器骨架
-  - TWAP/VWAP 切片
-  - 超时撤单/重挂 + 被动/主动追价
-  - 敞口/流动性约束
-  - 守护监控 + 每日报告 + 归档
-- 盘中：
-  - 分钟级卖出监控与日频卖分合并
+- Modular architecture:
+  - `stock_filter`, `stock_exclusion`, `stock_strategy`, `stock_data`, `backtest`, `execution`, `live`, `tools`
+- Data:
+  - Integrate the local JoinQuant SDK (`jqdatasdk`)
+  - Use SQLite as the primary store (replacing the early pickle workflow)
+  - Incremental sync + resume from checkpoint
+  - Separate one-year databases for CSI1000 / CSI2000
+- Strategy:
+  - Parallel scoring across multiple strategies + weighted aggregation
+  - Separate buy and sell logic
+  - D+2 holding constraint + stop-loss + trailing stop-loss
+- Optimization:
+  - Grid / iterative optimization
+  - Hard constraints (`excess_ann_return > 0`, drawdown protection)
+  - stage1 + stage2 use vectorbt pre-screening
+  - Multi-process parallelism
+- Live execution:
+  - QMT mock + real adapter skeleton
+  - TWAP/VWAP slicing
+  - Order-timeout cancel/re-submit + passive/aggressive price chasing
+  - Exposure/liquidity constraints
+  - Daemon monitoring + daily report + archiving
+- Intraday:
+  - Minute-level sell monitoring merged with the daily-frequency sell score
 
-## 3. 数据当前状态（快照）
+## 3. Current Data Status (Snapshot)
 
 - `data/market_cache_csi1000_1y.db`
-  - 日线已经落齐
-  - 基本面/因子快照基本齐全
+  - Daily bars are fully populated
+  - Fundamentals/factor snapshots are largely complete
 - `data/market_cache_csi2000_1y.db`
-  - 日线已落齐
-  - 快照因聚宽额度窗口而未完全同步
+  - Daily bars are fully populated
+  - Snapshots not fully synced because of the JoinQuant quota window
 
-## 4. 事故记录
+## 4. Incident Log
 
-- `quant/` 下的源码在工作空间中意外丢失。
-- 紧急恢复靠 loader stub + pyc。
-- 这个状态无法长期维护。
-- 当前恢复目标是把项目回到可维护的纯源码状态。
+- The source code under `quant/` was accidentally lost from the workspace.
+- Emergency recovery relied on loader stubs + pyc.
+- This state cannot be maintained long-term.
+- The current recovery goal is to bring the project back to a maintainable pure-source state.
 
-## 5. 本阶段恢复目标
+## 5. Recovery Goals for This Phase
 
-- 把所有 “Recovered loader stub” 文件换成正常的 Python 源。
-- 保留上述历史需求的功能等价性。
-- 特别保留：
-  - vectorbt stage1 + stage2 预筛的迭代式优化
-  - 多线程/多进程优化路径
-  - 实盘 daemon + QMT mock 执行循环
-  - 聚宽试用窗口的评估流程
+- Replace all “Recovered loader stub” files with normal Python source.
+- Preserve functional equivalence with the historical requirements above.
+- Specifically preserve:
+  - Iterative optimization with vectorbt stage1 + stage2 pre-screening
+  - Multi-threaded/multi-process optimization paths
+  - Live daemon + QMT mock execution loop
+  - Evaluation workflow for the JoinQuant trial window
 
-## 6. 重写完成后的验证目标
+## 6. Verification Goals After the Rewrite
 
-- 回测：
+- Backtest:
   - `scripts/backtest_csi1000_baseline.py`
-- 优化：
+- Optimization:
   - `scripts/optimize_csi1000_baseline.py`
   - `quant.tools.iterative_optimize.run_iterative_optimize(...)`
-- 实盘冒烟：
-  - `quant.live.daemon` 单周期 dry run
-- 同步冒烟：
-  - `scripts/jq_bulk_sync_smallcap.py` 启动 + 断点路径
-  - 如果额度耗尽，标记为外部阻塞（不是代码问题）
+- Live-trading smoke test:
+  - `quant.live.daemon` single-cycle dry run
+- Sync smoke test:
+  - `scripts/jq_bulk_sync_smallcap.py` startup + resume-from-checkpoint path
+  - If the quota is exhausted, mark it as an external blocker (not a code problem)
 
 ---
 
-<a id="2-备看股票笔记"></a>
+<a id="2-watchlist-stock-notes"></a>
 
 
 
 ## 2026-03-27
 
-- 局势
-  目前全球局势混乱，中东战火不断，股市要赚钱就要做中长期，中长期看板块，看业绩，要做超跌反弹并有业绩支撑的逻辑，比如六氟磷酸锂套了你半年，最近连续涨停。屡创新高的股票，比如存储，完全不具有投资价值。 集中持仓，在低点位重仓，前几个持仓点位都是 近20%，
+- Situation
+  The global situation is currently chaotic, with war in the Middle East ongoing. To make money in the stock market you have to think medium-to-long term: look at sectors, look at earnings, and go for oversold rebounds backed by earnings. For example, lithium hexafluorophosphate had you trapped for half a year and has recently hit limit-up several days in a row. Stocks that keep making new highs, such as memory storage, have no investment value at all. Concentrate holdings and size up heavily at low price points; the first few entry levels were all close to 20%,
 
 
-## 聪明的投资者
+## The Smart Investor
 
-不要把技术分析孤立起来看。研究股票的大市，研究公司的经营情况，研究公司的产品，再看股票的走势图，特别还要注重交易量的变化，只有在这个基础上，技术分析才有意义。
+Don't look at technical analysis in isolation. Study the broad market, study the company's operations, study the company's products, and only then look at the stock's price chart, paying particular attention to changes in trading volume; only on this basis does technical analysis become meaningful.
 
-要确定大市的走向，最重要的是每天要追踪股票指数的运动。如美国的道琼斯指数，
-日本的 日经指数，香港的恒生指数，上海、深圳的综合指数等等
+To determine the direction of the broad market, the most important thing is to track the movement of stock indices every day, such as the Dow Jones index in the US,
+the Nikkei index in Japan, the Hang Seng index in Hong Kong, the Shanghai and Shenzhen composite indices, and so on
 
 
 

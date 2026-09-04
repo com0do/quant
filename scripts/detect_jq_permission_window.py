@@ -41,6 +41,7 @@ def main() -> None:
         except Exception as exc:
             msg = str(exc)
             out["message"] = msg
+            # Matches the JoinQuant server error meaning "can only fetch data from <start> to <end>"; the pattern must stay Chinese
             m = re.search(r"仅能获取(\d{4}-\d{2}-\d{2})至(\d{4}-\d{2}-\d{2})", msg)
             if m:
                 out["status"] = "limited"

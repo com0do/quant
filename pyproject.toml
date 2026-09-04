@@ -11,6 +11,8 @@ dependencies = [
   "numpy>=2.4.3",
   "pandas>=3.0.1",
   "pysocks>=1.7.1",
+  # JqClient etc. use it to load the repo-root .env automatically (JQ_USERNAME / JQ_PASSWORD / proxy); if it is missing, .env is silently ignored.
+  "python-dotenv>=1.2.2",
   "redis>=7.4.0",
   "requests>=2.32.0",
   "scipy>=1.17.1",
@@ -19,19 +21,20 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-# GBM 因子聚合策略（gbm-train / gbm_multifactor 策略）需要 lightgbm。
-# 未安装时：策略会降级为中性分，主链路不受影响。安装：`uv sync --extra ml`
+# The GBM factor-aggregation strategy (gbm-train / gbm_multifactor) needs lightgbm.
+# When it is not installed the strategy degrades to a neutral score and the main flow is unaffected. Install with `uv sync --extra ml`
 ml = [
   "lightgbm>=4.5.0",
 ]
-# LLM 层（--mode nlp-analyze，直连 DeepSeek）：只用 requests，已在主依赖里，无需额外声明。
-# Hermes agent 层（--mode hermes-chat）：hermes-agent 装到 ~/.hermes/（独立 Py 3.11 venv），
-# 通过 subprocess 桥。所以**不作为本工程的 pip 依赖**——用 `bash quant/ml/hermes/setup.sh` 安装。
+# LLM layer (--mode nlp-analyze, direct DeepSeek): only uses requests, which is already a main dependency, so nothing extra is declared.
+# Hermes agent layer (--mode hermes-chat): hermes-agent is installed into ~/.hermes/ (its own Py 3.11 venv),
+# bridged via subprocess. So it is **not a pip dependency of this project**; install it with `bash quant/ml/hermes/setup.sh`.
 
+# Do not put anything into a group named `dev`: uv installs `dev` by default, so CI (uv sync --frozen) and ordinary users would be dragged into it.
+# Install the Jupyter kernel on demand: `make jupyter` (or `uv sync --group jupyter`).
 [dependency-groups]
-dev = [
+jupyter = [
   "ipykernel>=7.2.0",
-  "python-dotenv>=1.2.2",
 ]
 
 [build-system]
@@ -42,5 +45,4 @@ build-backend = "hatchling.build"
 packages = ["quant"]
 
 [tool.uv]
-default-groups = ["dev"]
 package = true

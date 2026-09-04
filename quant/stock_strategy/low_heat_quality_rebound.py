@@ -32,11 +32,11 @@ def _load_sector_map() -> pd.DataFrame:
 
 class LowHeatQualityReboundStrategy:
     """
-    中线逻辑：
-    1) 业绩支撑（ROE/估值）
-    2) 低位（相对120日高点有显著回撤）
-    3) 出现反弹确认（MA5>MA10 + 短期收益转正）
-    4) 偏向低热度（低热行业/低换手拥挤）
+    Mid-term logic:
+    1) Earnings support (ROE / valuation)
+    2) Low position (a significant drawdown from the 120-day high)
+    3) Rebound confirmation (MA5 > MA10 + short-term return turns positive)
+    4) Prefer low heat (low-heat sectors / low-turnover, uncrowded names)
     """
 
     name = "low_heat_quality_rebound"
@@ -57,23 +57,24 @@ class LowHeatQualityReboundStrategy:
         if x.empty:
             return pd.Series(dtype=float)
 
-        # 业绩 + 估值（低PE/PB + 高ROE）
+        # Earnings + valuation (low PE/PB + high ROE)
         quality = 0.9 * zscore(x["roe"]) - 0.45 * zscore(x["pe_ratio"]) - 0.35 * zscore(x["pb_ratio"])
 
-        # 低位：离120日高点回撤越大越好，避免追高新高股
+        # Low position: the deeper the drawdown from the 120-day high the better; avoid chasing new highs
         dd = pd.to_numeric(x["dd_120"], errors="coerce").fillna(0.0)
         low_position = (-dd).clip(lower=0.0)
         not_new_high_penalty = (dd > -0.05).astype(float) + (pd.to_numeric(x["ret_60"], errors="coerce").fillna(0.0) > 0.50).astype(float)
 
-        # 反弹确认：短均线上穿 + 短周期收益转正
+        # Rebound confirmation: short MA crosses above + short-horizon return turns positive
         rebound = (
             (pd.to_numeric(x["ma_5"], errors="coerce") > pd.to_numeric(x["ma_10"], errors="coerce")).astype(float)
             + (pd.to_numeric(x["close"], errors="coerce") > pd.to_numeric(x["ma_5"], errors="coerce")).astype(float)
             + (pd.to_numeric(x["ret_5"], errors="coerce") > 0).astype(float)
         ) / 3.0
 
-        # 基础量价 + MACD 过滤：
-        # 下跌趋势中“放量反抽”更偏诱多，降低评分；反之对温和放量+MACD转强给小幅加分
+        # Basic price-volume + MACD filter:
+        # In a downtrend, a "high-volume bounce" is more likely a bull trap, so lower the score; conversely,
+        # give a small bonus for moderate volume expansion + strengthening MACD
         ma20 = pd.to_numeric(x.get("ma_20"), errors="coerce")
         ma60 = pd.to_numeric(x.get("ma_60"), errors="coerce")
         ma50 = pd.to_numeric(x.get("ma_50"), errors="coerce")
@@ -101,7 +102,7 @@ class LowHeatQualityReboundStrategy:
         long_trend_penalty = (close < ma200).astype(float).fillna(0.0)
         mid_trend_penalty = ((close < ma50) & (close >= ma200)).astype(float).fillna(0.0)
 
-        # 低热度：优先低热行业（有行业映射时），否则退化为低换手/非拥挤
+        # Low heat: prefer low-heat sectors (when a sector mapping exists), otherwise fall back to low turnover / uncrowded
         sec = _load_sector_map()
         if not sec.empty:
             x2 = x.merge(sec, on="code", how="left")
@@ -144,7 +145,7 @@ class LowHeatQualityReboundStrategy:
         if b.empty:
             return pd.Series(dtype=float)
         held = b.reindex(ctx.held_codes).fillna(b.min() if len(b) else 0.0)
-        # Buy score 低 + 破位，卖出紧迫度升高
+        # Low buy score + broken support raises the sell urgency
         base = (held.max() - held) / (held.max() - held.min() + 1e-9)
         if ctx.market_features is not None and not ctx.market_features.empty:
             mf = ctx.market_features.set_index("code")

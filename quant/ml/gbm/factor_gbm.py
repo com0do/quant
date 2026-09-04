@@ -1,12 +1,12 @@
-"""GBM 因子聚合：训练 / 保存 / 加载 / 推理。
+"""GBM factor aggregation: train / save / load / infer.
 
-- 特征列：与 simple_3factor 保持一致，方便同基准对比
+- Feature columns: identical to simple_3factor so results are comparable on the same baseline
   ['pe_ratio', 'pb_ratio', 'roe', 'ret_20', 'ret_60', 'vol_20']
-- 标签：前向 N 日超额收益（个股相对当日横截面均值的 forward return）
-- 模型：LightGBM 回归器；训练/验证按时间切分（不做随机 shuffle）
-- 保存路径默认 `data/models/gbm_multifactor.txt`
+- Label: forward N-day excess return (each stock's forward return relative to that day's cross-sectional mean)
+- Model: LightGBM regressor; train/validation split by time (no random shuffle)
+- Default save path: `data/models/gbm_multifactor.txt`
 
-lightgbm 未安装时：`train_model` 抛出明确错误，`predict_scores` 在 strategy 层降级为中性分。
+When lightgbm is not installed: `train_model` raises a clear error, and `predict_scores` degrades to a neutral score at the strategy layer.
 """
 
 from __future__ import annotations
@@ -45,7 +45,7 @@ class GbmTrainConfig:
 
 
 def _load_prices(db_path: str, start_date: str, end_date: str) -> pd.DataFrame:
-    """从 prices_daily 拉取全表 close/paused，做前向收益标签所需的全部准备。"""
+    """Load the full close/paused table from prices_daily and prepare everything needed for forward-return labels."""
     with sqlite3.connect(db_path) as conn:
         df = pd.read_sql_query(
             """
@@ -66,7 +66,7 @@ def _load_prices(db_path: str, start_date: str, end_date: str) -> pd.DataFrame:
 
 
 def _add_price_features(prices: pd.DataFrame) -> pd.DataFrame:
-    """在价格宽表上加 ret_20/ret_60/vol_20；输入必须按 (code, date) 排好。"""
+    """Add ret_20/ret_60/vol_20 to the wide price table; the input must be sorted by (code, date)."""
     if prices.empty:
         return prices
     p = prices.copy()
@@ -78,14 +78,14 @@ def _add_price_features(prices: pd.DataFrame) -> pd.DataFrame:
 
 
 def _add_forward_label(prices: pd.DataFrame, forward_days: int) -> pd.DataFrame:
-    """加 fwd_ret（前向 forward_days 天收益率）。"""
+    """Add fwd_ret (forward return over forward_days days)."""
     p = prices.copy()
     p["fwd_ret"] = p.groupby("code")["close"].pct_change(forward_days).shift(-forward_days)
     return p
 
 
 def _load_factors(db_path: str, start_date: str, end_date: str) -> pd.DataFrame:
-    """从 factors_snapshot 拉基本面因子。"""
+    """Load fundamental factors from factors_snapshot."""
     with sqlite3.connect(db_path) as conn:
         df = pd.read_sql_query(
             """
@@ -105,12 +105,12 @@ def _load_factors(db_path: str, start_date: str, end_date: str) -> pd.DataFrame:
 
 
 def _cross_section_demean(df: pd.DataFrame, col: str) -> pd.Series:
-    """按 date 组内做去均值。"""
+    """Demean within each date group."""
     return df[col] - df.groupby("date")[col].transform("mean")
 
 
 def build_training_frame(cfg: GbmTrainConfig) -> pd.DataFrame:
-    """构造训练样本表：每一行 (date, code, features..., fwd_ret_demeaned)。"""
+    """Build the training sample table: one row per (date, code, features..., fwd_ret_demeaned)."""
     prices = _load_prices(cfg.db_path, cfg.start_date, cfg.end_date)
     if prices.empty:
         raise RuntimeError(f"[gbm] no prices in {cfg.db_path} for {cfg.start_date}~{cfg.end_date}")
@@ -152,7 +152,7 @@ def _split_by_date(df: pd.DataFrame, valid_ratio: float) -> tuple[pd.DataFrame, 
 
 
 def train_model(df: pd.DataFrame, cfg: GbmTrainConfig, model_path: str = DEFAULT_MODEL_PATH) -> dict:
-    """用 LightGBM 训练一个回归模型；返回 metrics + 保存路径。"""
+    """Train a LightGBM regression model; return metrics + the save path."""
     try:
         import lightgbm as lgb
     except ImportError as e:
@@ -219,7 +219,7 @@ def train_model(df: pd.DataFrame, cfg: GbmTrainConfig, model_path: str = DEFAULT
 
 
 def _rank_ic_by_date(df: pd.DataFrame) -> pd.Series:
-    """按日截面 rank IC。"""
+    """Daily cross-sectional rank IC."""
     def _ic(g: pd.DataFrame) -> float:
         if len(g) < 5:
             return np.nan
@@ -229,7 +229,7 @@ def _rank_ic_by_date(df: pd.DataFrame) -> pd.Series:
 
 
 def load_model(model_path: str = DEFAULT_MODEL_PATH):
-    """加载 LightGBM Booster。"""
+    """Load a LightGBM Booster."""
     try:
         import lightgbm as lgb
     except ImportError as e:
@@ -240,7 +240,7 @@ def load_model(model_path: str = DEFAULT_MODEL_PATH):
 
 
 def predict_scores(model, features: pd.DataFrame) -> pd.Series:
-    """给定 [code + FEATURE_COLS] 的 DataFrame，返回按 code 索引的分数 Series。"""
+    """Given a DataFrame with [code + FEATURE_COLS], return a score Series indexed by code."""
     if features is None or features.empty:
         return pd.Series(dtype=float)
     x = features[FEATURE_COLS].values.astype(np.float64)
@@ -256,7 +256,7 @@ def run_train(
     model_path: str = DEFAULT_MODEL_PATH,
     config_path: str | None = None,
 ) -> dict:
-    """CLI 入口。db_path 未指定时，从 config 里读 `data.runtime_csi1000_db_path`。"""
+    """CLI entry point. When db_path is not given, read `data.runtime_csi1000_db_path` from the config."""
     if db_path is None:
         from quant.config import load_config
         cfg = load_config(config_path=config_path)

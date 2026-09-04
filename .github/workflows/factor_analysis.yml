@@ -1,15 +1,13 @@
 name: Weekly Factor Analysis
 
+# Factor analysis needs the local SQLite data, which the home quant-daily job maintains. CI is manual-trigger only.
 on:
-  schedule:
-    # 每周六 08:00 CST (00:00 UTC) 运行因子分析
-    - cron: '0 0 * * 6'
   workflow_dispatch:
 
 jobs:
   factor-analyze:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
 
     steps:
       - uses: actions/checkout@v4
@@ -20,23 +18,31 @@ jobs:
           python-version: '3.12'
 
       - name: Install dependencies
-        run: uv sync --frozen
+        run: |
+          uv sync --frozen
+          sudo apt-get install -y -qq rclone xz-utils sqlite3
 
-      - name: Restore data cache
-        uses: actions/cache@v4
-        with:
-          path: data/
-          key: quant-data-${{ github.run_id }}
-          restore-keys: |
-            quant-data-
+      - name: Pull data snapshot from R2
+        env:
+          R2_ACCESS_KEY_ID:     ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_ENDPOINT:          ${{ secrets.R2_ENDPOINT }}
+          R2_BUCKET:            ${{ secrets.R2_BUCKET }}
+          R2_HOSTNAME_PREFIX:   ${{ secrets.R2_HOSTNAME_PREFIX }}
+        run: bash scripts/ci_pull_r2_data.sh
 
       - name: Run factor analysis
         id: factors
         run: |
+          if [ ! -f data/runtime/market_csi1000_latest.db ]; then
+            echo "::warning::No data/runtime/market_csi1000_latest.db — configure R2 secrets and home data node backup"
+            echo "skipped=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
           uv run python main.py --mode factor-analyze --config config/final_freeze_2025.toml 2>&1 | tee factor_output.txt
 
       - name: Parse factor results
-        if: success()
+        if: success() && steps.factors.outputs.skipped != 'true'
         run: |
           echo "### Factor Analysis Results" >> $GITHUB_STEP_SUMMARY
           if [ -f output/factor_ic_ir.csv ]; then
@@ -53,8 +59,18 @@ jobs:
             echo "Layer returns available in artifacts." >> $GITHUB_STEP_SUMMARY
           fi
           if [ ! -f output/factor_ic_ir.csv ] && [ ! -f output/factor_ranked_summary.csv ]; then
-            echo "⚠️ No factor data available. Run JQ data sync first." >> $GITHUB_STEP_SUMMARY
+            echo "⚠️ Factor analyze finished but no CSV output — check factor_output.txt artifact." >> $GITHUB_STEP_SUMMARY
           fi
+
+      - name: Data missing notice
+        if: steps.factors.outputs.skipped == 'true'
+        run: |
+          echo "### Factor Analysis Skipped" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "No SQLite data in CI. Configure GitHub Secrets:" >> $GITHUB_STEP_SUMMARY
+          echo "- \`R2_ACCESS_KEY_ID\` / \`R2_SECRET_ACCESS_KEY\` / \`R2_ENDPOINT\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "And run home data node backup: \`sudo systemctl start quant-r2-backup.service\`" >> $GITHUB_STEP_SUMMARY
 
       - name: Upload factor artifacts
         if: always()
@@ -67,4 +83,6 @@ jobs:
             output/factor_turnover.csv
             output/factor_single_perf.csv
             output/factor_ranked_summary.csv
+            factor_output.txt
           retention-days: 90
+          if-no-files-found: ignore

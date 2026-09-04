@@ -139,7 +139,7 @@ def main() -> None:
     )
 
     # Combine in jq_horse order:
-    # [小市值, ETF反弹, ETF轮动, 白马攻防] = [0.5, 0, 0.5, 0]
+    # [small-cap, ETF rebound, ETF rotation, blue-chip offense/defense] = [0.5, 0, 0.5, 0]
     mix = (
         small_eq[["date", "ret", "benchmark_equity"]]
         .rename(columns={"ret": "smallcap_ret"})

@@ -32,9 +32,9 @@ def _load_sector_map() -> pd.DataFrame:
 
 class AdaptiveRegimeMidtermStrategy:
     """
-    自适应中线策略：
-    - 热点趋势市: 提高趋势/强业绩权重，避免系统性踏空
-    - 震荡回撤市: 回到低热度 + 低位反弹 + 业绩支撑
+    Adaptive mid-term strategy:
+    - Hot trending market: raise the weight of trend / strong earnings to avoid being systematically out of the market
+    - Choppy / pullback market: fall back to low heat + low-position rebound + earnings support
     """
 
     name = "adaptive_regime_midterm"
@@ -118,10 +118,10 @@ class AdaptiveRegimeMidtermStrategy:
 
     def _high_position_pullback_rebound_score(self, x: pd.DataFrame) -> pd.Series:
         """
-        捕捉“高位主升中的回调反弹”:
-        - 中期强势 (ret60, ma20>ma60)
-        - 近端回调 (dd_120 不太深, 且 ret_5 先弱后转强)
-        - 回弹确认 (close>ma10, ma5>=ma10)
+        Capture a "pullback rebound within a high-level main uptrend":
+        - Medium-term strength (ret60, ma20 > ma60)
+        - Recent pullback (dd_120 not too deep, and ret_5 first weak then turning strong)
+        - Rebound confirmation (close > ma10, ma5 >= ma10)
         """
         quality = 0.8 * zscore(x.get("roe")) - 0.3 * zscore(x.get("pe_ratio"))
         trend_core = 0.85 * zscore(x.get("ret_60")) + 0.45 * zscore(x.get("ret_20"))
@@ -146,7 +146,7 @@ class AdaptiveRegimeMidtermStrategy:
         normal_pullback_signal = pd.to_numeric(x.get("normal_pullback_signal"), errors="coerce").fillna(0.0)
         trend_resume_signal = pd.to_numeric(x.get("trend_resume_signal"), errors="coerce").fillna(0.0)
         abnormal_climax_reversal = pd.to_numeric(x.get("abnormal_climax_reversal"), errors="coerce").fillna(0.0)
-        # 进攻层同样规避“弱MACD下的异常放量反抽”
+        # The offensive layer also avoids "abnormal high-volume bounces under weak MACD"
         trap_rebound = ((pd.to_numeric(x.get("ret_20"), errors="coerce") < 0) & (pd.to_numeric(x.get("ret_5"), errors="coerce") > 0) & (vr20 > 1.8) & (macd_hist < 0) & (macd_dif < macd_dea)).astype(float)
         trend_bonus = ((macd_dif > macd_dea) & (macd_hist > 0) & (vr20 >= 1.0) & (vr20 <= 1.8)).astype(float)
         overheat_penalty = (pd.to_numeric(x.get("ret_20"), errors="coerce").fillna(0.0) > 0.35).astype(float)
@@ -184,7 +184,7 @@ class AdaptiveRegimeMidtermStrategy:
         low_score = self._low_position_rebound_score(x)
         high_score = self._high_position_pullback_rebound_score(x)
         if regime == "trend_hot":
-            # 热点趋势时，提升“高位回调反弹”权重，避免系统性踏空
+            # In a hot trending market, raise the weight of the "high-level pullback rebound" to avoid being systematically out of the market
             score = 0.35 * low_score + 0.65 * high_score
         else:
             score = 0.70 * low_score + 0.30 * high_score

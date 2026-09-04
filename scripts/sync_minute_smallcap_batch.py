@@ -97,6 +97,7 @@ def main() -> None:
             except Exception as e:
                 msg = str(e)
                 print(f"[WARN] {i}/{len(codes)} {code} failed: {msg}")
+                # Matches the JoinQuant server error text meaning "maximum query limit"; it must stay Chinese
                 if ("query limit" in msg.lower()) or ("最大查询限制" in msg):
                     print("[STOP] quota reached")
                     break

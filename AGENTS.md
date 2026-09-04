@@ -1,243 +1,253 @@
-# AGENTS.md — quant 仓库导航与工作约定
+# AGENTS.md — quant repository navigation and working conventions
 
-> 面向两类读者：
+> Written for two kinds of readers:
 >
-> 1. **你（仓库主人）** —— 想快速把这套系统学起来、跑起来、迭代起来。
-> 2. **AI 助手 / 未来接手的 agent** —— 需要在几分钟内摸清脉络、约定与安全红线。
+> 1. **You (the repo owner)** — who wants to learn, run and iterate on this system quickly.
+> 2. **AI assistants / future agents taking over** — who need to grasp the layout, conventions and safety red lines within minutes.
 >
-> 阅读顺序：本文 → `docs/00_INDEX.md` → `docs/01~90_*.md`。
+> Reading order: this file → `docs/00_INDEX.md` → `docs/01~90_*.md`.
 >
-> **文档硬规则**：
-> - 文件名英文 snake_case，内容中文（git diff 友好）
-> - 相同主题合并成一份 `docs/NN_topic.md`，两位数字前缀强制排序
-> - 文档必须与代码事实对齐；评估/计划类内容显式标注"尚未实现"或"MVP 待验证"
+> **Hard documentation rules**:
+> - File names in English snake_case, content in English (git-diff friendly)
+> - Merge documents on the same topic into a single `docs/NN_topic.md`; a two-digit numeric prefix enforces ordering
+> - Documentation must match the facts in the code; assessment/plan content must explicitly be marked "not implemented yet" or "MVP, unverified"
 
 ---
 
-## 0. TL;DR（一分钟版）
+## 0. TL;DR (one-minute version)
 
-- 这是一个 **A 股小盘量化系统**，主战场中证 1000 / 中证 2000 / 小微盘。
-- 数据：**聚宽（JoinQuant）JQData** → 本地 SQLite。
-- 研究：`main.py --mode backtest / walk-forward / optimize-fast / factor-analyze / gbm-train / nlp-analyze / ...`
-- 实盘：`main.py --mode live-auto`（Linux 策略 + Windows miniQMT，通过 HTTP 网关沟通）
-- 冻结生产配置：`config/final_freeze_2025.toml`
-- 策略池：9 个多因子/截面策略（生产用 `csi1000_enhanced`）+ 1 个 GBM MVP（`gbm_multifactor`，未验证）
-- ML/AI：
-  - `quant/ml/llm/` — LLM 一次性调用（DeepSeek 直连，`--mode nlp-analyze`）
-  - `quant/ml/hermes/` — Hermes agent 集成（Nous Research hermes-agent runtime；`--mode hermes-chat`）
-  - `quant/ml/gbm/` — LightGBM 因子聚合（可选依赖）
-- 核心哲学：**策略要简单、验证要严格、参数要能在线微调、GitHub Actions 只做编排、实盘永远在本地**
+- This is an **A-share small-cap quant system**; the main battlefield is CSI 1000 / CSI 2000 / micro-caps.
+- Data: **JoinQuant JQData** → local SQLite.
+- Research: `main.py --mode backtest / walk-forward / optimize-fast / factor-analyze / gbm-train / nlp-analyze / ...`
+- Live trading: `main.py --mode live-auto` (Linux strategy + Windows miniQMT, talking over an HTTP gateway)
+- Frozen production config: `config/final_freeze_2025.toml`
+- Strategy pool: 9 multi-factor / cross-sectional strategies (production uses `csi1000_enhanced`) + 1 GBM MVP (`gbm_multifactor`, unverified)
+- ML/AI:
+  - `quant/ml/llm/` — one-shot LLM calls (direct DeepSeek, `--mode nlp-analyze`)
+  - `quant/ml/hermes/` — Hermes agent integration (Nous Research hermes-agent runtime; `--mode hermes-chat`)
+  - `quant/ml/gbm/` — LightGBM factor aggregation (optional dependency)
+- Core philosophy: **keep strategies simple, validate strictly, make parameters tunable online, GitHub Actions only orchestrates, live trading always runs locally**
 
 ---
 
-## 1. 仓库结构（一屏认知）
+## 1. Repository layout (one-screen overview)
 
 ```
 quant/
-├── main.py                     # 统一入口，用 --mode 选择功能
-├── pyproject.toml              # uv 管理，lightgbm 为可选依赖 [ml]
-├── README.md                   # 英文速览
-├── AGENTS.md                   # ← 你现在读的这份
-├── TODO                        # 开放性问题
-├── .env.example                # 复制为 .env 后填写（Hermes / JQ / QMT 等凭据）
-├── config/                     # TOML 配置（final_freeze_2025.toml 为冻结生产版）
-├── docs/                       # 中文文档（见 docs/00_INDEX.md）
+├── main.py                     # unified entry point, pick a feature with --mode
+├── pyproject.toml              # managed by uv; lightgbm is an optional dependency [ml]; ipykernel lives in the jupyter group (not installed by default; the group name dev is forbidden)
+├── Makefile                    # Jupyter kernel (make jupyter / status / clean-venv); the kernel name comes from [project].name
+├── README.md                   # English overview
+├── AGENTS.md                   # ← the file you are reading now
+├── TODO                        # open questions
+├── .env.example                # copy to .env and fill in (Hermes / JQ / QMT etc. credentials)
+├── config/                     # TOML configs (final_freeze_2025.toml is the frozen production version)
+├── docs/                       # English docs (see docs/00_INDEX.md)
 │   ├── 00_INDEX.md
-│   ├── 01_foundation.md        # 演进 + 交易笔记 + 风控 + 量化利弊
-│   ├── 02_strategy.md          # 截面策略 + 量价心理 + 形态例子 + 流派综述
-│   ├── 03_engine.md            # 引擎参数 + 冻结手册 + 提交清单
-│   ├── 04_joinquant.md         # 聚宽 3 篇合一
-│   ├── 05_live.md              # 实盘/网关 6 篇合一
-│   ├── 06_regulation.md        # 量化监管收紧应对
-│   ├── 07_ai_research.md       # ML/AI 集成（含 Hermes/GBM MVP 手册）
-│   └── 90_reference.md         # 参考资料
-├── quant/                      # 主 Python 包
-│   ├── app.py                  # 每个 --mode 对应的应用函数
-│   ├── config.py               # AppConfig（Data / Strategy / Daemon / Risk / Gateway / Execution）
-│   ├── backtest/               # 回测引擎
-│   ├── stock_data/             # SQLite / JQData 客户端
-│   ├── stock_filter/           # 价值预筛
-│   ├── stock_exclusion/        # 可交易性过滤
-│   ├── stock_strategy/         # 策略实现 + 打分聚合 + 生命周期 + EGD 在线学习
-│   ├── execution/              # broker / paper / QMT HTTP / 拆单 / 风控
-│   ├── live/                   # 盘前扫描 / 守护 / 分钟监控 / 日报 / 执行计划
-│   ├── tools/                  # 优化 / 同步 / 因子分析 / walk-forward
-│   ├── gateway/                # GatewayClient（Linux 调 Windows 网关）
-│   ├── bridge/                 # 聚宽 → Redis 信号 schema
-│   └── ml/                     # ML/AI 集成（都跑在主 quant venv, Py 3.12）
-│       ├── llm/                # LLM 一次性调用（DeepSeek 直连 + JSONL→SQLite 幂等流水线）
-│       ├── hermes/             # Hermes 桥（走 `hermes` CLI + profile；配对的 plugin 在 <repo>/hermes_plugin/）
-│       └── gbm/                # LightGBM 因子聚合（可选依赖）
-├── hermes_plugin/              # Hermes plugin（跑在 hermes venv, Py 3.11；symlink 到 ~/.hermes/profiles/quant/plugins/quant/）
+│   ├── 01_foundation.md        # evolution + trading notes + risk control + pros and cons of quant
+│   ├── 02_strategy.md          # cross-sectional strategies + price-volume psychology + pattern examples + school survey
+│   ├── 03_engine.md            # engine parameters + frozen runbook + submission checklist
+│   ├── 04_joinquant.md         # JoinQuant: 3 documents merged
+│   ├── 05_live.md              # live trading / gateway: 6 documents merged
+│   ├── 06_regulation.md        # response to tightening quant regulation
+│   ├── 07_ai_research.md       # ML/AI integration (incl. Hermes/GBM MVP guide)
+│   ├── 09_home_data_node.md    # home Linux data node deployment (JQ sync + R2 cold backup)
+│   └── 90_reference.md         # reference material
+├── quant/                      # main Python package
+│   ├── app.py                  # application function for each --mode
+│   ├── config.py               # AppConfig (Data / Strategy / Daemon / Risk / Gateway / Execution)
+│   ├── backtest/               # backtest engine
+│   ├── stock_data/             # SQLite / JQData client
+│   ├── stock_filter/           # value pre-screening
+│   ├── stock_exclusion/        # tradability filters
+│   ├── stock_strategy/         # strategy implementations + score aggregation + lifecycle + EGD online learning
+│   ├── execution/              # broker / paper / QMT HTTP / order splitting / risk control
+│   ├── live/                   # pre-open scan / daemon / minute monitor / daily report / execution plan
+│   ├── tools/                  # optimization / sync / factor analysis / walk-forward
+│   ├── gateway/                # GatewayClient (Linux calling the Windows gateway)
+│   ├── bridge/                 # JoinQuant → Redis signal schema
+│   └── ml/                     # ML/AI integrations (all run in the main quant venv, Py 3.12)
+│       ├── llm/                # one-shot LLM calls (direct DeepSeek + idempotent JSONL→SQLite pipeline)
+│       ├── hermes/             # Hermes bridge (via the `hermes` CLI + profile; the paired plugin is in <repo>/hermes_plugin/)
+│       └── gbm/                # LightGBM factor aggregation (optional dependency)
+├── hermes_plugin/              # Hermes plugin (runs in the hermes venv, Py 3.11; symlinked to ~/.hermes/profiles/quant/plugins/quant/)
 │   ├── plugin.yaml
-│   ├── __init__.py             # register(ctx)：注册 5 工具 + 4 skill
+│   ├── __init__.py             # register(ctx): registers 5 tools + 4 skills
 │   ├── tool_schemas.py
 │   ├── skills/{analyst_zoe,info_charles,risk_kris,trader_ethan}/SKILL.md
 │   ├── configs/deepseek_profile.example.yaml
-│   ├── setup.sh                # 建 profile + symlink plugin + 写 profile .env
+│   ├── setup.sh                # create profile + symlink plugin + write the profile .env
 │   └── README.md
-├── xtquant_gateway/            # Windows 侧网关服务
-├── deploy/gateway_server/      # Windows 网关独立部署环境
-├── scripts/                    # 运维脚本
-├── test/                       # 聚宽端策略脚本
-├── output/                     # 运行产物（.gitignore，白名单摘要 JSON 除外）
-├── data/                       # 本地数据 & 模型（.gitignore；symlink 到大盘）
-│   ├── runtime/*.db            # 主行情库
-│   ├── models/                 # ML 模型（GBM 训练产物，动态生成）
-│   └── nlp/                    # NLP 输入 JSONL + 输出 signals.db
-└── .github/workflows/          # 每日回测漂移、因子分析、聚宽签到等 CI
+├── xtquant_gateway/            # Windows-side gateway service
+├── deploy/
+│   ├── gateway_server/         # standalone deployment environment for the Windows QMT gateway
+│   └── home_data_node/         # Linux data node (systemd + rclone + R2 cold backup, see docs/09)
+├── scripts/                    # operations scripts
+├── research/                   # one-off studies with their own README (e.g. strong_dragon: deck audit + reverse-engineered signal + JoinQuant script)
+├── test/                       # JoinQuant-side strategy scripts
+├── output/                     # run artifacts (.gitignore, except whitelisted summary JSON)
+├── data/                       # local data & models (.gitignore; symlinked to the big disk)
+│   ├── runtime/*.db            # main market database
+│   ├── models/                 # ML models (GBM training artifacts, generated dynamically)
+│   ├── nlp/                    # NLP input JSONL + output signals.db
+│   └── news/                   # daily news / theme archive (scripts/news_archive.py, run by the home data node)
+├── .workflow/                  # Gitee Go pipelines (jq-signin.yml: daily JoinQuant check-in from Mainland-China runners)
+└── .github/workflows/          # daily backtest drift, factor analysis, etc. CI (cannot reach JoinQuant: region-blocked)
 ```
 
 ---
 
-## 2. "从零学量化 + 熟悉聚宽策略"最短路径
+## 2. Shortest path for "learn quant from scratch + get familiar with JoinQuant strategies"
 
-按顺序做，一天上手，一周读懂主流聚宽策略。
+Follow the steps in order: get started in a day, understand mainstream JoinQuant strategies in a week.
 
-| 步 | 事情 | 位置 |
+| Step | What to do | Where |
 |----|------|------|
-| 0 | 调整心态：接受 4 大局限 | `docs/01_foundation.md` §4 量化利弊 + §2/§3 |
-| 1 | 掌握截面策略骨架 | `docs/02_strategy.md` §1；对照 `quant/stock_strategy/simple_3factor.py`、`jq_multifactor_clone.py` |
-| 2 | 读懂"心理→量化"翻译 | `docs/02_strategy.md` §2、§3 |
-| 3 | 熟悉引擎与参数 | `docs/03_engine.md` §1；跑一次 `--mode backtest` |
-| 4 | 判断策略是否过拟合 | `--mode walk-forward`、`--mode factor-analyze` |
-| 5 | 搬入聚宽策略 | `docs/04_joinquant.md` |
-| 6 | 接实盘（先纸盘 1 周） | `docs/05_live.md` §1、§2、§4、§6 |
+| 0 | Adjust your mindset: accept the 4 big limitations | `docs/01_foundation.md` §4 Advantages and Limitations of Quantitative Trading + §2/§3 |
+| 1 | Master the cross-sectional strategy skeleton | `docs/02_strategy.md` §1; compare with `quant/stock_strategy/simple_3factor.py`, `jq_multifactor_clone.py` |
+| 2 | Understand the "psychology → quant" translation | `docs/02_strategy.md` §2, §3 |
+| 3 | Get familiar with the engine and parameters | `docs/03_engine.md` §1; run `--mode backtest` once |
+| 4 | Judge whether a strategy is overfitted | `--mode walk-forward`, `--mode factor-analyze` |
+| 5 | Port a JoinQuant strategy | `docs/04_joinquant.md` |
+| 6 | Go live (paper trading for 1 week first) | `docs/05_live.md` §1, §2, §4, §6 |
 
 ---
 
-## 3. 常用命令速查
+## 3. Command cheat sheet
 
 ```bash
-# 冻结版回测（最常用）
+# Frozen backtest (the most common)
 uv run python main.py --mode backtest --config config/final_freeze_2025.toml
 
-# walk-forward 验证
+# walk-forward validation
 uv run python main.py --mode walk-forward --config config/final_freeze_2025.toml
 
-# 因子 IC/IR
+# Factor IC/IR
 uv run python main.py --mode factor-analyze --config config/final_freeze_2025.toml
 
-# 快速优化管线
+# Fast optimization pipeline
 uv run python main.py --mode optimize-fast --config config/final_freeze_2025.toml
 
-# 聚宽数据同步
+# JoinQuant data sync
 uv run python main.py --mode jq-bulk-sync --config config/final_freeze_2025.toml
 
-# 纸盘全流程
+# Run .ipynb files in VS Code / Cursor: one command installs the jupyter group + registers a kernel bound to .venv (does not affect ordinary users or CI)
+make jupyter
+
+# Full paper-trading flow
 uv run python main.py --mode live-auto --config config/live_paper.toml
 
-# ← 新增：训练 GBM 因子聚合模型（需先 uv sync --extra ml）
+# ← new: train the GBM factor-aggregation model (run uv sync --extra ml first)
 uv run python main.py --mode gbm-train \
   --db-path data/runtime/market_csi1000_latest.db \
   --start-date 2023-01-01 --end-date 2025-06-30
 
-# LLM 一次性结构化提取公告（DeepSeek 直连）
-uv run python main.py --mode nlp-analyze --dry-run       # 冒烟
-uv run python main.py --mode nlp-analyze                 # 实跑（需 DEEPSEEK_API_KEY）
+# One-shot structured extraction from announcements via the LLM (direct DeepSeek)
+uv run python main.py --mode nlp-analyze --dry-run       # smoke test
+uv run python main.py --mode nlp-analyze                 # real run (needs DEEPSEEK_API_KEY)
 
-# Hermes agent 多步对话（先 bash hermes_plugin/setup.sh 建 profile 并 symlink plugin）
-uv run python main.py --mode hermes-chat --prompt "帮我看看 000001.XSHE 最近怎么样"
+# Multi-step Hermes agent chat (run bash hermes_plugin/setup.sh first to create the profile and symlink the plugin)
+uv run python main.py --mode hermes-chat --prompt "Take a look at how 000001.XSHE has been doing lately"
 uv run python main.py --mode hermes-chat --skill analyst_zoe --code 000001.XSHE --date 2025-08-01
 uv run python main.py --mode hermes-chat --skill info_charles --codes 000001.XSHE,600519.XSHG
 uv run python main.py --mode hermes-chat --skill risk_kris --codes 000001.XSHE,600519.XSHG
 uv run python main.py --mode hermes-chat --skill trader_ethan --code 000001.XSHE --date 2025-08-01
-uv run python main.py --mode hermes-chat --profile alt --prompt "..."   # 换 profile 隔离
+uv run python main.py --mode hermes-chat --profile alt --prompt "..."   # switch profile for isolation
 ```
 
 ---
 
-## 4. 关键设计决策（Cheatsheet）
+## 4. Key design decisions (cheat sheet)
 
-摘自 `docs/01_foundation.md` §1，日常工作硬约束：
+From `docs/01_foundation.md` §1; hard constraints for day-to-day work:
 
-- **ADR-1**：GitHub Actions 只做编排（同步/漂移/告警），实盘交易永远本地。
-- **ADR-2**：miniQMT 主链路 + QMT 全功能版兜底；`xtquant_gateway` API 一致。
-- **ADR-3**：每个策略 ≤ 3 个核心因子；必须过 walk-forward；用在线学习慢速微调。
-- **ADR-4**：`data/` 不进 git；`data/models/`、`data/nlp/` 全部动态生成。
-
----
-
-## 5. 数据、配置、密钥（红线）
-
-- **`data/`（含 `models/`、`nlp/`、`hermes_cache/`）、`output/*`（除白名单摘要）、`.env`、`uv.lock` 不进 git**。
-- 聚宽账号密码、`QMT_GATEWAY_TOKEN`、`DEEPSEEK_API_KEY` 等**只放 `.env`**，或走 GitHub Secrets。绝不写进代码或 config。
-- LLM 模型不入 git：仅通过 DeepSeek API（付费）调用；本仓库只存客户端代码 + prompt 模板。
-- **hermes-agent runtime 独立安装、独立管理**：装在 `~/.hermes/`（含 Py 3.11 venv），本仓库不打包它。
-  与 hermes 相关的凭据（DeepSeek key 等）放到 hermes profile 的 `.env`（例 `~/.hermes/profiles/quant/.env`），**不是**本仓库的 `.env`。
-- **不要往 `quant/ml/hermes/` 塞跑在 hermes venv 里的代码**：那里只放主 venv 侧的桥。真正的 plugin 在**仓库根 `hermes_plugin/`**。
-- LightGBM 是**可选依赖**（`pyproject.toml [project.optional-dependencies].ml`）；未装时 GBM 策略降级为中性分。
+- **ADR-1**: GitHub Actions only orchestrates (sync / drift / alerts); live trading always runs locally.
+- **ADR-2**: miniQMT is the main path, with full-featured QMT as the fallback; the `xtquant_gateway` API stays the same.
+- **ADR-3**: at most 3 core factors per strategy; it must pass walk-forward; fine-tune slowly with online learning.
+- **ADR-4**: `data/` stays out of git; `data/models/` and `data/nlp/` are always generated dynamically.
 
 ---
 
-## 6. 修改仓库时的约定
+## 5. Data, configuration, secrets (red lines)
 
-1. **别写"注释解释代码在做什么"**。注释只用来解释非显然的权衡。
-2. **策略参数改动**要么改 `config/*.toml`，要么改 `quant/config.py` 默认值。不 hardcode。
-3. **新策略**必须在 `quant/stock_strategy/registry.py` 注册。
-4. **回测/优化产物** 一律写到 `output/`，摘要类 JSON 白名单入 git。
-5. **网关端点新增** 同步更新 `docs/05_live.md` §2、§3。
-6. **ML 组件** 放到 `quant/ml/`，接口走 SQLite/JSON/HTTP，必须提供降级模式。
-7. **文档更新**：一级主题一份 `docs/NN_topic.md`；新增文档取下一个可用编号；不改动已有编号（除非批量重排并同步 `AGENTS.md`）。
-8. **文档与实现对齐**：功能真正落地 → 把该项从 `07_ai_research.md`（或其他计划性小节）移到主文档；代码删除时同步清理相关章节。
-9. **提交前自查**：
-   - 回测能跑通：`uv run python main.py --mode backtest --config config/final_freeze_2025.toml`
-   - 没引入新 hardcode 路径或 token
-   - 敏感文件没有 `git add`
+- **`data/` (including `models/`, `nlp/`, `news/`, `hermes_cache/`), `output/*` (except whitelisted summaries) and `.env` stay out of git.** `uv.lock` **is committed**: all CI workflows run `uv sync --frozen`, so regenerate it with `uv lock` whenever `pyproject.toml` changes.
+- JoinQuant account/password, `QMT_GATEWAY_TOKEN`, `DEEPSEEK_API_KEY` etc. go **only in `.env`** or GitHub Secrets. Never write them into code or config.
+- LLM models stay out of git: they are only called via the DeepSeek API (paid); this repo only stores client code + prompt templates.
+- **The hermes-agent runtime is installed and managed independently**: it lives in `~/.hermes/` (with a Py 3.11 venv) and this repo does not package it.
+  Hermes-related credentials (DeepSeek key etc.) go in the hermes profile's `.env` (e.g. `~/.hermes/profiles/quant/.env`), **not** this repo's `.env`.
+- **Do not put code that runs in the hermes venv into `quant/ml/hermes/`**: only the bridge on the main venv side belongs there. The real plugin is in **`hermes_plugin/` at the repo root**.
+- LightGBM is an **optional dependency** (`pyproject.toml [project.optional-dependencies].ml`); when it is not installed the GBM strategy degrades to a neutral score.
 
 ---
 
-## 7. AI 助手工作指南（面向未来的 agent）
+## 6. Conventions when modifying the repo
 
-- **理解目标**：让系统**稳定跑起来、可复现**，而不是不断堆新特性。
-- **回测优先**：任何策略改动最好给出前后回测对比（`output/backtest_metrics.json`）。
-- **默认只读**：需要写盘/联网/发单的操作，先给出计划，再确认再执行。**永远不要在没有明确指令时切到 `broker_type = "qmt_http"` 或去掉 `dry_run`。**
-- **数据尊重**：不清理/覆盖 `data/`、`output/`、`.env`。
-- **文档同源**：改代码同时改文档，尤其是 `config/*.toml` 字段变动 → `docs/03_engine.md` §1。
-- **文档语言**：文档中文；代码注释可英文；错误消息面向用户时中文。
-- **文档命名**：`docs/NN_topic.md`；不要用中文文件名；不要引入新子目录。
-- **ML/AI 组件**：优先使用 `quant/ml/` 下已有基础设施（LLM 层 / Hermes 桥 / GBM 训练器）；模型/权重永远不入 git。
-- **术语澄清**：本项目里 **Hermes 特指 [Nous Research hermes-agent](https://github.com/NousResearch/hermes-agent) 这个 agent runtime**，不是 LLM。真正的 LLM 是 DeepSeek。
-- **两个 venv 不混**：`quant/ml/hermes/` 只放主 quant venv（Py 3.12）里跑的代码；`hermes_plugin/`（仓库根）只放跑在 hermes venv（Py 3.11）里的 plugin 代码。两边通过 subprocess 通信，别互相 import。
-- **不夸大功能**：评估类文档必须标注"尚未实现"或"MVP 待验证"。
+1. **Do not write comments that explain what the code does.** Comments are only for explaining non-obvious trade-offs.
+2. **Strategy parameter changes** go either in `config/*.toml` or in the defaults of `quant/config.py`. Never hard-code.
+3. **New strategies** must be registered in `quant/stock_strategy/registry.py`.
+4. **Backtest/optimization artifacts** are always written to `output/`; summary-type JSON is whitelisted into git.
+5. **New gateway endpoints** require updating `docs/05_live.md` §2 and §3.
+6. **ML components** go under `quant/ml/`, interfaces go through SQLite/JSON/HTTP, and a degraded mode is mandatory.
+7. **Doc updates**: one `docs/NN_topic.md` per top-level topic; new documents take the next free number; existing numbers are never changed (unless they are renumbered in bulk and `AGENTS.md` is updated in sync).
+8. **Docs aligned with the implementation**: once a feature is really implemented → move it from `07_ai_research.md` (or another planning section) into the main document; when code is deleted, clean up the related sections too.
+9. **Self-check before committing**:
+   - The backtest runs: `uv run python main.py --mode backtest --config config/final_freeze_2025.toml`
+   - No new hard-coded paths or tokens were introduced
+   - Sensitive files were not `git add`ed
 
 ---
 
-## 8. 常见问题速答
+## 7. Guide for AI assistants (for future agents)
 
-| 问题 | 快速回答 |
+- **Understand the goal**: make the system **run stably and reproducibly**, rather than piling on new features.
+- **Backtest first**: any strategy change should ideally come with a before/after backtest comparison (`output/backtest_metrics.json`).
+- **Read-only by default**: for anything that writes to disk / uses the network / places orders, give a plan first, then confirm, then execute. **Never switch to `broker_type = "qmt_http"` or remove `dry_run` without an explicit instruction.**
+- **Respect data**: do not clean up / overwrite `data/`, `output/`, `.env`.
+- **Docs follow code**: change the docs together with the code, especially `config/*.toml` field changes → `docs/03_engine.md` §1.
+- **Language**: everything in this repo is written in English: docs, code comments, log/error messages, config comments and LLM prompts. Exceptions: (1) `test/` (strategy scripts copied from JoinQuant, not native to this repo); (2) functional Chinese literals that must match external Chinese text, namely JoinQuant server error messages and website UI strings, the Chinese risk-flag vocabulary in `quant/ml/llm/schema.py` and its prompt, and the Chinese trigger keywords of the Hermes skills. Keep an English comment next to every such literal explaining why it stays Chinese; (3) Chinese companion documents the owner asked for, named `*.zh.md` next to their English original (e.g. `research/strong_dragon/README.zh.md`); the English file stays the source of truth and both are updated together. Output-language requirements for an LLM (e.g. "respond in Chinese") are written in English.
+- **Doc naming**: `docs/NN_topic.md`; do not use non-English file names; do not introduce new subdirectories.
+- **ML/AI components**: prefer the existing infrastructure under `quant/ml/` (LLM layer / Hermes bridge / GBM trainer); models/weights never go into git.
+- **Terminology**: in this project **Hermes specifically means the [Nous Research hermes-agent](https://github.com/NousResearch/hermes-agent) agent runtime**, not an LLM. The actual LLM is DeepSeek.
+- **Never mix the two venvs**: `quant/ml/hermes/` only holds code that runs in the main quant venv (Py 3.12); `hermes_plugin/` (repo root) only holds plugin code that runs in the hermes venv (Py 3.11). The two sides talk via subprocess and must not import each other.
+- **Do not overstate capabilities**: assessment documents must be marked "not implemented yet" or "MVP, unverified".
+
+---
+
+## 8. FAQ
+
+| Question | Quick answer |
 |------|---------|
-| 我要在另一台机器上跑，怎么初始化数据？ | `git clone` → `uv sync` → `main.py --mode jq-bulk-sync` |
-| 聚宽额度用完了怎么办？ | `.github/workflows/jq_signin.yml` 自动签到；额度用完等第二天。 |
-| 想复现某个聚宽社区策略？ | 先看是不是"截面+排序+top-N"；是就改 `simple_3factor.py` / `jq_multifactor_clone.py`。 |
-| 策略上线前最少要做什么？ | walk-forward 通过 + 纸盘 1 周 + 网关验收通过。 |
-| miniQMT 淘汰了怎么办？ | ADR-2 已准备：切 QMT 全功能版，`xtquant_gateway` 只改连接方式。 |
-| 参数调得太狠回测爆表？ | 大概率过拟合。跑 `--mode walk-forward` 判断。 |
-| 想加海龟 / 缠论 / 深度学习？ | `docs/02_strategy.md` §4 + `docs/07_ai_research.md` 都有决策与门槛。 |
-| 券商发风险提示、监管收紧？ | `docs/06_regulation.md` 里的收紧参数模板。 |
-| **公告批量结构化怎么起？** | `.env` 填 `DEEPSEEK_API_KEY`；把 JSONL 放 `data/nlp/inbox/`；`main.py --mode nlp-analyze [--dry-run]`。 |
-| **Hermes agent 怎么起？** | 已装 hermes → `bash hermes_plugin/setup.sh`（建 profile `quant`，symlink plugin，写 profile .env）→ `hermes config set --profile quant agent.enabled_toolsets '["core","quant"]'` → `main.py --mode hermes-chat --skill analyst_zoe --code ...`。 |
-| **四大 AI 角色是啥？** | `analyst_zoe`（基本面）、`info_charles`（舆情事件）、`risk_kris`（组合风控）、`trader_ethan`（短线价量）——都是 `hermes_plugin/skills/` 的 markdown。 |
-| **能否用别的 profile？** | 能。`main.py --mode hermes-chat --profile <name>`；setup 时 `bash hermes_plugin/setup.sh <name>`。默认 `quant`。 |
-| **GBM 怎么训？** | `uv sync --extra ml`（装 lightgbm）→ `main.py --mode gbm-train --db-path .../csi1000_latest.db`；产物 `data/models/gbm_multifactor.txt`。 |
-| GBM 未训 / lightgbm 未装策略会挂吗？ | 不会，会降级为中性分（全 0），主链路继续跑。 |
-| 没装 hermes / profile 没建 会怎样？ | `--mode hermes-chat` 返回 `{"error": ..., "hint": ...}` 提示下一步；其他 mode 完全不受影响。 |
+| I want to run this on another machine; how do I initialize the data? | `git clone` → `uv sync` → `main.py --mode jq-bulk-sync` |
+| What if the JoinQuant quota is used up? | The Gitee Go pipeline `.workflow/jq-signin.yml` checks in daily (credentials are Gitee Go general variables associated with the pipeline); the home `quant-daily.timer` does check-in + sync as well. GitHub runners cannot reach JoinQuant. |
+| I want to reproduce a JoinQuant community strategy. | First check whether it is "cross-section + ranking + top-N"; if so, modify `simple_3factor.py` / `jq_multifactor_clone.py`. |
+| What is the minimum to do before a strategy goes live? | walk-forward passes + 1 week of paper trading + gateway acceptance passes. |
+| What if miniQMT is retired? | ADR-2 is prepared for it: switch to full-featured QMT; `xtquant_gateway` only changes how it connects. |
+| I tuned the parameters hard and the backtest looks amazing? | Most likely overfitting. Run `--mode walk-forward` to check. |
+| I want to add Turtle / Chan theory / deep learning. | `docs/02_strategy.md` §4 + `docs/07_ai_research.md` both have the decisions and thresholds. |
+| My broker sent a risk warning / regulation is tightening. | The tightening parameter template in `docs/06_regulation.md`. |
+| **How do I start batch structuring of announcements?** | Fill in `DEEPSEEK_API_KEY` in `.env`; put JSONL files into `data/nlp/inbox/`; run `main.py --mode nlp-analyze [--dry-run]`. |
+| **How do I start the Hermes agent?** | With hermes installed → `bash hermes_plugin/setup.sh` (creates profile `quant`, symlinks the plugin, writes the profile .env) → `hermes config set --profile quant agent.enabled_toolsets '["core","quant"]'` → `main.py --mode hermes-chat --skill analyst_zoe --code ...`. |
+| **What are the four AI roles?** | `analyst_zoe` (fundamentals), `info_charles` (sentiment events), `risk_kris` (portfolio risk control), `trader_ethan` (short-term price-volume), all of them markdown files under `hermes_plugin/skills/`. |
+| **Can I use a different profile?** | Yes. `main.py --mode hermes-chat --profile <name>`; during setup run `bash hermes_plugin/setup.sh <name>`. The default is `quant`. |
+| **How do I train the GBM?** | `uv sync --extra ml` (installs lightgbm) → `main.py --mode gbm-train --db-path .../csi1000_latest.db`; the artifact is `data/models/gbm_multifactor.txt`. |
+| Will the strategy crash if the GBM is untrained / lightgbm is not installed? | No, it degrades to a neutral score (all 0) and the main flow keeps running. |
+| What happens if hermes is not installed / the profile was not created? | `--mode hermes-chat` returns `{"error": ..., "hint": ...}` with the next step; all other modes are completely unaffected. |
 
 ---
 
-## 9. 相关外部资源
+## 9. Related external resources
 
-- 聚宽 API：<https://www.joinquant.com/help/api/help>
-- 聚宽 JQData：<https://www.joinquant.com/help/api/doc?name=JQDatadoc&id=9842>
-- 迅投 XtQuant / miniQMT：<https://dict.thinktrader.net/>
-- DeepSeek API：<https://platform.deepseek.com>
-- Nous Research hermes-agent：<https://hermes-agent.nousresearch.com/docs>
-- Hermes profiles：<https://hermes-agent.nousresearch.com/docs/user-guide/profiles>
-- agentskills.io 规范：<https://agentskills.io/specification.md>
-- LightGBM：<https://lightgbm.readthedocs.io>
-- 本项目 GitHub 远端：`git@github.com:com0do/quant.git`
+- JoinQuant API: <https://www.joinquant.com/help/api/help>
+- JoinQuant JQData: <https://www.joinquant.com/help/api/doc?name=JQDatadoc&id=9842>
+- Xuntou XtQuant / miniQMT: <https://dict.thinktrader.net/>
+- DeepSeek API: <https://platform.deepseek.com>
+- Nous Research hermes-agent: <https://hermes-agent.nousresearch.com/docs>
+- Hermes profiles: <https://hermes-agent.nousresearch.com/docs/user-guide/profiles>
+- agentskills.io specification: <https://agentskills.io/specification.md>
+- LightGBM: <https://lightgbm.readthedocs.io>
+- This project's GitHub remote: `git@github.com:com0do/quant.git`
 
 ---
 
-> 觉得某处过时或有误，请一并更新这份 `AGENTS.md` 和对应的 `docs/NN_*.md`。
-> **代码是术，文档是道，风控是命。**
+> If something looks outdated or wrong, please update this `AGENTS.md` and the matching `docs/NN_*.md` together.
+> **Code is the technique, docs are the way, risk control is life.**

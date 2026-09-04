@@ -1,32 +1,35 @@
-# 文档索引
+# Documentation Index
 
-> 所有相近文档已合并成单文件；数字前缀强制排序，文件名英文（git diff 友好），内容中文。
-> 每份文件内部都带目录，可以直接跳到关心的小节。
+> All closely related documents have been merged into single files; the numeric prefix enforces ordering, file names are English (git diff friendly), and the content is in English.
+> Every file carries its own table of contents, so you can jump straight to the section you care about.
 
-| # | 文件 | 内容 | 什么时候读 |
+| # | File | Content | When to read |
 |---|------|------|-----------|
-| 1 | `01_foundation.md` | 系统演进 + 交易笔记 + 风控铁律 + 量化利弊 | **入门必读** |
-| 2 | `02_strategy.md` | 截面策略手册 + 量价心理 + 形态例子 + 流派综述 | 学量化、看聚宽策略必读 |
-| 3 | `03_engine.md` | 引擎与参数 + 冻结运行手册 + 提交清单 | 调参、跑回测、提交前读 |
-| 4 | `04_joinquant.md` | JQ 到 QMT 路线图 + 数据字典 + Redis 信号桥 | 复用聚宽数据/策略时读 |
-| 5 | `05_live.md` | 实盘流水线 + QMT 网关协议 + xtquant V2 + 部署 + xtdata + QKA | 接实盘或做运维时读 |
-| 6 | `06_regulation.md` | 量化占比 >25% 收紧的应对手册 | 监管压力/调频率时读 |
-| 7 | `07_ai_research.md` | RL/Agent/RAG/GBM 的评估与落地路线（含 Hermes/GBM MVP 现状） | 讨论 ML/AI 引入前必读 |
-| 8 | `90_reference.md` | 会话历史 + 备看股票笔记 | 需要历史上下文时读 |
+| 1 | `01_foundation.md` | System evolution + trading notes + risk-control iron rules + pros and cons of quant + **strategy elegy and evolution** (§5) | **Must-read for getting started** |
+| 2 | `02_strategy.md` | Cross-sectional strategy handbook + price-volume psychology + chart-pattern examples + overview of schools of thought | Must-read for learning quant and reading JoinQuant strategies |
+| 3 | `03_engine.md` | Engine and parameters + frozen-config run handbook + pre-commit checklist | Read when tuning parameters, running backtests, or before committing |
+| 4 | `04_joinquant.md` | JQ-to-QMT roadmap + data dictionary + Redis signal bridge + callback timing | Read when reusing JoinQuant data/strategies |
+| 5 | `05_live.md` | Live-trading pipeline + QMT gateway protocol + xtquant V2 + deployment + xtdata + QKA | Read when going live or doing operations |
+| 6 | `06_regulation.md` | Response playbook for tightening when quant share exceeds 25% | Read under regulatory pressure / when reducing trading frequency |
+| 7 | `07_ai_research.md` | Evaluation and rollout roadmap for RL/Agent/RAG/GBM (including the current Hermes/GBM MVP status) | Must-read before discussing introducing ML/AI |
+| 8 | `08_wufu_strategy.md` | Wufu fusion strategy in detail (S1 bottom-fishing + S2 rotation + peak tracking + backtest insights) | Must-read before iterating on wufu.py |
+| 9 | `09_home_data_node.md` | Home Linux data node deployment (daily JQ sync + Cloudflare R2 cold backup + CI pull) | Read when setting up the primary data source / wiring up CI |
+| 90 | `90_reference.md` | Session history + watchlist stock notes | Read when you need historical context |
 
-## 推荐阅读路径
+## Recommended Reading Paths
 
-- **零基础学量化**：`01`（第 4 节：量化利弊） → `02` → `03`
-- **理解聚宽策略、复用聚宽资源**：`02`（第 1、4 节） → `04`
-- **理解本仓库当前架构**：`01`（第 1 节演进） → `03` → `05`（第 1、2 节）
-- **准备接实盘**：`01`（第 3 节风控） → `03` → `05`（1→2→4→6）
-- **面对监管收紧调策略**：`06` → `03` → `05`（第 3 节 xtquant V2）
-- **决策是否引入 ML/AI**：`01`（第 4 节利弊） → `07`
+- **Learning quant from scratch**: `01` (section 4: pros and cons of quant) → `02` → `03`
+- **Understanding JoinQuant strategies and reusing JoinQuant resources**: `02` (sections 1, 4) → `04`
+- **Understanding the wufu fusion strategy**: `02` (sections 1, 4) → `04` (section 4 callback timing) → `08`
+- **Understanding this repo's current architecture**: `01` (section 1 evolution) → `03` → `05` (sections 1, 2)
+- **Preparing to go live**: `01` (section 3 risk control) → `03` → `05` (1→2→4→6)
+- **Adjusting strategies under tightening regulation**: `06` → `03` → `05` (section 3 xtquant V2)
+- **Deciding whether to introduce ML/AI**: `01` (section 4 pros and cons) → `07`
 
-## 命名与更新约定
+## Naming and Update Conventions
 
-1. 一级主题一份文件，编号 `01~08`，`90` 留给参考。
-2. 文件名英文 snake_case，内容中文。
-3. 每份文件顶部保留一个"目录"锚点表；添加新小节时同步更新该表。
-4. 文档必须与代码事实对齐；评估/计划类内容必须显式标注"尚未实现"或"MVP 待验证"。
-5. 功能真正落地后，把该项从 `07_ai_research.md`（或其他计划性小节）移到主文档对应位置。
+1. One file per top-level topic, numbered `01~09`; `90` is reserved for reference material.
+2. File names are English snake_case; the content is in English.
+3. Keep a "table of contents" anchor table at the top of every file; update it whenever you add a new section.
+4. Documents must stay aligned with the code facts; evaluation/plan content must be explicitly marked "not yet implemented" or "MVP pending validation".
+5. Once a feature has really landed, move it from `07_ai_research.md` (or other planning sections) to the corresponding place in the main docs.

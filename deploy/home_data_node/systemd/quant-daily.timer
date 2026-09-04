@@ -1,0 +1,12 @@
+[Unit]
+Description=Quant: schedule daily home maintenance (sign-in + sync + retention)
+Requires=quant-daily.service
+
+[Timer]
+# Default: daily 08:10 CST (= 00:10 UTC), runs on trading and non-trading days alike (the check-in is needed every day)
+OnCalendar=@DAILY_ONCALENDAR@
+Persistent=true
+RandomizedDelaySec=300
+
+[Install]
+WantedBy=timers.target

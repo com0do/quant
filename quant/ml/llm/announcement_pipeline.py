@@ -1,16 +1,16 @@
-"""批量分析公告：读 JSONL 输入 → 直连 DeepSeek → 写 SQLite。
+"""Batch announcement analysis: read JSONL input -> call DeepSeek directly -> write SQLite.
 
-输入 JSONL 示例（一行一份公告）：
+Input JSONL example (one announcement per line):
     {"code": "000001.XSHE", "date": "2025-01-15", "title": "...", "text": "..."}
 
-输出 SQLite：
-    表 nlp_signals，主键 source_text_hash（同一条公告不重复处理）。
+Output SQLite:
+    table nlp_signals, primary key source_text_hash (the same announcement is never processed twice).
 
-设计要点：
-- 无状态、无工具、无记忆——这是 LLM 一次性调用，不是 agent。
-- 端点不可达 / 单条解析失败：写 raw_error，不打断整个批次。
-- text 太长时截断到 max_text_chars（默认 30000）。
-- 通过 source_text_hash 做幂等，重复运行不会重复消耗 token。
+Design notes:
+- Stateless, no tools, no memory: this is a one-shot LLM call, not an agent.
+- Endpoint unreachable / a single record fails to parse: write raw_error and keep the rest of the batch going.
+- Overlong text is truncated to max_text_chars (default 30000).
+- Idempotent via source_text_hash, so re-running does not spend tokens again.
 """
 
 from __future__ import annotations
@@ -48,7 +48,7 @@ def _render_prompt(tpl: str, ann: AnnouncementInput, max_text_chars: int) -> str
 
 
 def _extract_json(text: str) -> dict | None:
-    """从模型输出里稳健提取一个 JSON 对象。允许存在 markdown 围栏或多余文字。"""
+    """Robustly extract one JSON object from model output; markdown fences or stray text are tolerated."""
     text = text.strip()
     if not text:
         return None
@@ -144,10 +144,10 @@ def run_batch(
     max_text_chars: int = 30000,
     settings: DeepSeekSettings | None = None,
 ) -> dict:
-    """处理一批公告，返回统计信息。
+    """Process a batch of announcements and return statistics.
 
-    dry_run=True：走完流水线但不真正调用 DeepSeek（用于本地冒烟）。
-    limit>0：本次最多处理多少条（超过就停）。
+    dry_run=True: run the whole pipeline without actually calling DeepSeek (local smoke test).
+    limit>0: process at most this many records in this run (stop once exceeded).
     """
     stats = {
         "input_files": 0,
@@ -191,7 +191,7 @@ def run_batch(
                 assert client is not None
                 prompt = _render_prompt(template, ann, max_text_chars)
                 messages = [
-                    {"role": "system", "content": "你是严格输出 JSON 的助手。"},
+                    {"role": "system", "content": "You are an assistant that outputs strict JSON only."},
                     {"role": "user", "content": prompt},
                 ]
                 try:

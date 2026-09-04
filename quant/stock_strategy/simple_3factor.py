@@ -2,9 +2,9 @@
 Simplified 3-factor strategy — a drop-in replacement for csi1000_enhanced.
 
 Collapses the original 5 factors into 3 composite factors:
-  1. fundamentals (价值+质量): PE + PB + ROE
-  2. momentum (动量): ret_20 + ret_60
-  3. stability (低波动): vol_20
+  1. fundamentals (value + quality): PE + PB + ROE
+  2. momentum: ret_20 + ret_60
+  3. stability (low volatility): vol_20
 
 Keeps the logic simple, transparent, and ≤3 core factors per ADR-3.
 """

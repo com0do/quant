@@ -1,11 +1,11 @@
-"""LLM 一次性调用层：文本进 → 结构化 JSON 出。
+"""One-shot LLM call layer: text in -> structured JSON out.
 
-设计原则：
-- 只做**无状态、无工具、无记忆**的一次性调用。
-- 需要多步推理 / 用工具查数据 / 会话记忆的场景走 `quant.ml.hermes` 而不是这里。
-- 只依赖 `requests`（已在主 pyproject 里）。DeepSeek key 走 `.env`。
+Design principles:
+- Only **stateless, tool-less, memory-less** one-shot calls.
+- Anything needing multi-step reasoning / tools to look up data / conversation memory goes through `quant.ml.hermes`, not here.
+- Depends only on `requests` (already in the main pyproject). The DeepSeek key comes from `.env`.
 
-推荐用法：
+Recommended usage:
     from quant.ml.llm import DeepSeekClient
     from quant.ml.llm.announcement_pipeline import run_batch
 

@@ -81,10 +81,10 @@ class JqClient:
         try:
             jq = importlib.import_module("jqdatasdk")
 
-            name = os.getenv("CC_JQ_NAME")
-            pw = os.getenv("CC_JQ_PW")
+            name = os.getenv("JQ_USERNAME")
+            pw = os.getenv("JQ_PASSWORD")
             if not name or not pw:
-                raise RuntimeError("missing CC_JQ_NAME/CC_JQ_PW")
+                raise RuntimeError("missing JQ_USERNAME/JQ_PASSWORD")
             jq.auth(name, pw)
         except Exception:
             self._disable_proxy()

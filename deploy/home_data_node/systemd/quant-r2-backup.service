@@ -1,0 +1,25 @@
+[Unit]
+Description=Quant: snapshot data/*.db to Cloudflare R2
+Wants=network-online.target
+After=network-online.target quant-jq-sync.service
+
+[Service]
+Type=oneshot
+User=@RUN_AS_USER@
+WorkingDirectory=@REPO_ROOT@
+EnvironmentFile=@REPO_ROOT@/deploy/home_data_node/.env
+Environment=HOME=@RUN_AS_HOME@
+Environment=PATH=@RUN_AS_HOME@/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+
+ExecStart=@REPO_ROOT@/deploy/home_data_node/bin/run-r2-backup.sh
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=quant-r2-backup
+
+TimeoutStartSec=3600
+Restart=on-failure
+RestartSec=180
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,12 @@
+[Unit]
+Description=Quant: schedule R2 backup
+Requires=quant-r2-backup.service
+
+[Timer]
+# Default: daily 22:00 CST (= 14:00 UTC), 6 hours after the JQ sync
+OnCalendar=@R2_BACKUP_ONCALENDAR@
+Persistent=true
+RandomizedDelaySec=600
+
+[Install]
+WantedBy=timers.target

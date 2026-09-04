@@ -1,0 +1,12 @@
+[Unit]
+Description=Quant: schedule JoinQuant web sign-in
+Requires=quant-jq-signin.service
+
+[Timer]
+# Default: daily 08:05 CST (= 00:05 UTC), slightly before the data sync
+OnCalendar=@JQ_SIGNIN_ONCALENDAR@
+Persistent=true
+RandomizedDelaySec=180
+
+[Install]
+WantedBy=timers.target

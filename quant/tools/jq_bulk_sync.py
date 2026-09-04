@@ -93,6 +93,8 @@ def run_jq_bulk_sync(config_path: str | None = None) -> dict:
         stdout_tail = (exc.stdout or "")[-2000:]
         stderr_tail = (exc.stderr or "")[-2000:]
         text = "\n".join([error_message, stdout_tail, stderr_tail]).lower()
+        # Matches JoinQuant server error texts meaning "maximum query limit" and "exceeded the daily maximum
+        # query limit"; the patterns must stay Chinese
         quota_exhausted = ("最大查询限制" in text) or ("query limit" in text) or ("超过了每日最大查询限制" in text)
     after = _sync_progress_snapshot(target_db)
     try:

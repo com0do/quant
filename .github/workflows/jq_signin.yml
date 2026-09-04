@@ -1,9 +1,15 @@
 name: JQ Daily Sign-in
 
+# ⚠️ The JoinQuant website login is restricted to Mainland China IPs. GitHub-hosted runners (US/Europe) get
+# redirected to fund.joinquant.com or shown the "region not supported" page (a Chinese-language notice).
+#
+# Recommended: run the check-in on the home data node (deploy/home_data_node -> quant-jq-signin.timer).
+# This workflow keeps workflow_dispatch for manual runs; when triggered by schedule and a
+# region block is detected, it is skipped with a notice (exit 0) so the board is not red every day.
+
+# The check-in has moved to the Gitee Go pipeline .workflow/jq-signin.yml (Mainland-China runners)
+# and the home data node's quant-daily.timer (see deploy/home_data_node/)
 on:
-  schedule:
-    # 每天 08:00 CST (00:00 UTC) — 签到领积分
-    - cron: '0 0 * * *'
   workflow_dispatch:
 
 jobs:
@@ -29,15 +35,38 @@ jobs:
         env:
           JQ_USERNAME: ${{ secrets.JQ_USERNAME }}
           JQ_PASSWORD: ${{ secrets.JQ_PASSWORD }}
+          JQ_DEBUG_DIR: output
         run: |
+          set +e
           uv run python scripts/jq_auto_claim.py 2>&1 | tee jq_claim_output.txt
+          rc=$?
+          if [ "$rc" -eq 2 ]; then
+            echo "::notice title=Region blocked::JoinQuant blocks non-Mainland-China IPs on GitHub-hosted runners. Use home data node: deploy/home_data_node (quant-jq-signin.timer)."
+            exit 0
+          fi
+          exit "$rc"
+
+      - name: Upload debug artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: jq-signin-debug
+          path: |
+            output/jq_*.png
+            output/jq_*.html
+            jq_claim_output.txt
+          retention-days: 7
+          if-no-files-found: ignore
 
       - name: Report
         if: always()
         run: |
           echo "### JQ Daily Sign-in" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+                    echo "> GitHub-hosted runners usually cannot reach the JoinQuant login page. Enable \`quant-jq-signin.timer\` on the home Linux node." >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
           if [ -f jq_claim_output.txt ]; then
             echo '```' >> $GITHUB_STEP_SUMMARY
-            tail -20 jq_claim_output.txt >> $GITHUB_STEP_SUMMARY
+            tail -25 jq_claim_output.txt >> $GITHUB_STEP_SUMMARY
             echo '```' >> $GITHUB_STEP_SUMMARY
           fi

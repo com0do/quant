@@ -1,108 +1,108 @@
 # hermes_plugin/
 
-**这个目录是 Hermes 插件的独立发布点**。它**不**是 `quant` Python 包的一部分——里面的
-代码在 hermes-agent 的 Python venv 里跑（Py 3.11），跟主 quant venv（Py 3.12）不共享。
+**This directory is the standalone release point for the Hermes plugin**. It is **not** part of the `quant` Python package — the
+code in it runs in the hermes-agent Python venv (Py 3.11) and is not shared with the main quant venv (Py 3.12).
 
-安装流程会把整个目录 symlink 到 hermes profile 的 `plugins/quant/`：
+The install flow symlinks the whole directory into the hermes profile's `plugins/quant/`:
 
 ```
 ~/.hermes/profiles/quant/plugins/quant   ──symlink──►   <repo>/hermes_plugin
 ```
 
-这也解释了为什么 plugin 放在仓库根、而不是 `quant/ml/hermes/` 下——**避免把两个不同 venv
-的代码堆在同一棵目录树里**。
+This also explains why the plugin lives at the repo root rather than under `quant/ml/hermes/` — **to avoid piling code for two different venvs
+into the same directory tree**.
 
-## 提供什么
+## What it provides
 
-- **5 个工具**（toolset id: `quant`）
-  - `get_kbars` — 日线 OHLCV
-  - `get_fundamentals` — 基本面快照
-  - `get_announcements` — LLM 结构化公告信号（来自 `data/nlp/signals.db`）
-  - `compute_factor` — 因子点值查询
-  - `run_backtest_slice` — 单策略短窗回测（慢，节制使用）
-- **4 个 skill**（agentskills.io 标准）
-  - `analyst_zoe/SKILL.md` — 基本面深度解读
-  - `info_charles/SKILL.md` — 舆情/事件聚合
-  - `risk_kris/SKILL.md` — 组合风险审查
-  - `trader_ethan/SKILL.md` — 短线价量结构
+- **5 tools** (toolset id: `quant`)
+  - `get_kbars` — daily OHLCV
+  - `get_fundamentals` — fundamentals snapshot
+  - `get_announcements` — LLM-structured announcement signals (from `data/nlp/signals.db`)
+  - `compute_factor` — point-in-time factor value lookup
+  - `run_backtest_slice` — single-strategy short-window backtest (slow; use sparingly)
+- **4 skills** (agentskills.io standard)
+  - `analyst_zoe/SKILL.md` — in-depth fundamentals interpretation
+  - `info_charles/SKILL.md` — sentiment / event aggregation
+  - `risk_kris/SKILL.md` — portfolio risk review
+  - `trader_ethan/SKILL.md` — short-term price-volume structure
 
-## 装法
+## Installation
 
 ```bash
-bash hermes_plugin/setup.sh                # 默认 profile 名 = quant
-bash hermes_plugin/setup.sh my_profile     # 自定义 profile 名
+bash hermes_plugin/setup.sh                # default profile name = quant
+bash hermes_plugin/setup.sh my_profile     # custom profile name
 ```
 
-setup.sh 干三件事：
-1. `hermes profile <name> --clone` 建 profile（继承你当前 profile 的 config 和 .env，DeepSeek key 一并带过来）
+setup.sh does three things:
+1. `hermes profile <name> --clone` creates the profile (inherits your current profile's config and .env, DeepSeek key included)
 2. `ln -s <repo>/hermes_plugin ~/.hermes/profiles/<name>/plugins/quant`
-3. 在 profile 的 `.env` 追加 `QUANT_REPO_PATH=<repo>`
+3. Appends `QUANT_REPO_PATH=<repo>` to the profile's `.env`
 
-**你需要手动做的**：把 `quant` 加到该 profile 的 `enabled_toolsets`：
+**What you need to do manually**: add `quant` to that profile's `enabled_toolsets`:
 
 ```bash
 hermes config set --profile quant agent.enabled_toolsets '["core","quant"]'
 ```
 
-## 数据流
+## Data flow
 
 ```
 User
  └─▶ hermes -z "..." (Py 3.11 venv, HERMES_HOME=~/.hermes/profiles/quant)
-      └─▶ 加载 plugins/quant/__init__.py → register(ctx)
-      └─▶ Agent 决定调 quant tool
+      └─▶ Load plugins/quant/__init__.py → register(ctx)
+      └─▶ Agent decides to call a quant tool
            └─▶ handler subprocess: `uv run python -m quant.ml.hermes.rpc <cmd> <args>`
-                └─▶ 主 quant venv (Py 3.12) 跑 rpc.py，读 SQLite / 跑回测
-                └─▶ JSON 回到 handler → 回到 agent
-      └─▶ Agent 组织最终回复
+                └─▶ Main quant venv (Py 3.12) runs rpc.py, reads SQLite / runs backtests
+                └─▶ JSON goes back to the handler → back to the agent
+      └─▶ Agent composes the final reply
  └─▶ User
 ```
 
-**关键**：plugin `__init__.py` 只用 stdlib（`os / json / subprocess / pathlib / logging`），
-不 import 主 quant 包——那些包在另一个 venv 里，import 会失败。
+**Key point**: the plugin's `__init__.py` uses only the stdlib (`os / json / subprocess / pathlib / logging`) and
+does not import the main quant package — those packages live in another venv, so the import would fail.
 
-## 目录
+## Directory layout
 
 ```
 hermes_plugin/
 ├── plugin.yaml                # Hermes plugin manifest
-├── __init__.py                # register(ctx): 注册工具 + skill
-├── tool_schemas.py            # 5 个工具的 JSON schema
+├── __init__.py                # register(ctx): register tools + skills
+├── tool_schemas.py            # JSON schemas for the 5 tools
 ├── skills/
 │   ├── analyst_zoe/SKILL.md
 │   ├── info_charles/SKILL.md
 │   ├── risk_kris/SKILL.md
 │   └── trader_ethan/SKILL.md
 ├── configs/
-│   └── deepseek_profile.example.yaml  # profile config.yaml 参考片段
-├── setup.sh                   # 一键：建 profile + symlink + 注 .env
-└── README.md                  # 本文
+│   └── deepseek_profile.example.yaml  # reference snippet for the profile config.yaml
+├── setup.sh                   # one-shot: create profile + symlink + patch .env
+└── README.md                  # this file
 ```
 
-## Skill 作者公约
+## Skill authoring conventions
 
-写 SKILL.md 时：
+When writing a SKILL.md:
 
-1. **一份 skill = 一个角色**。别写"通用 assistant skill"——那是 hermes 默认行为。
-2. **明确输入契约**：列清楚需要什么参数、缺省怎么补。
-3. **列出可用工具**：让 agent 明白它能调什么、不能调什么。
-4. **写"何时使用本 skill"**：给 hermes 的意图路由用。
-5. **给硬性约束**：越权/编造/给操作建议是三大高压线。
-6. **中文正文，英文文件路径**：与仓库文档约定一致。
+1. **One skill = one role**. Don't write a "generic assistant skill" — that is hermes's default behavior.
+2. **Define the input contract explicitly**: list which parameters are required and how defaults are filled in.
+3. **List the available tools**: so the agent knows what it can and cannot call.
+4. **Write a "when to use this skill" section**: used by hermes's intent routing.
+5. **Set hard constraints**: overstepping authority, fabricating data, and giving trading advice are the three red lines.
+6. **English body text, English file paths**: consistent with the repo documentation convention.
 
-## 修改后重载
+## Reloading after changes
 
-Hermes 支持热重载，但为稳妥起见改完 skill / plugin 后：
+Hermes supports hot reload, but to be safe, after editing a skill / plugin:
 
 ```bash
-hermes profile show quant       # 确认 plugin 还在
-# 或彻底重启：kill 掉 hermes gateway 后重开
+hermes profile show quant       # confirm the plugin is still there
+# or restart fully: kill the hermes gateway, then start it again
 ```
 
-## 常见问题
+## FAQ
 
-- **`error: QUANT_REPO_PATH not set`**：profile 的 `.env` 里加一行 `QUANT_REPO_PATH=<abs>`。
-- **`error: uv command not found`**：hermes 的进程没继承你的 PATH。把 uv 装到 `~/.local/bin/`，或在 profile 的 `.env` 里显式加 `PATH`。
-- **RPC 超时**：调大 `QUANT_RPC_TIMEOUT_SEC`（默认 120）。`run_backtest_slice` 可能需要 300s。
-- **DB 找不到**：先跑 `main.py --mode jq-bulk-sync` 拉数据，或 `--mode nlp-analyze` 生成公告库。
-- **plugin 未加载**：`hermes plugins list --profile quant` 看是否列出 quant；如果没有，检查 symlink 是否指对方向、`plugin.yaml` 里的 id 是否为 `quant`。
+- **`error: QUANT_REPO_PATH not set`**: add a line `QUANT_REPO_PATH=<abs>` to the profile's `.env`.
+- **`error: uv command not found`**: the hermes process did not inherit your PATH. Install uv into `~/.local/bin/`, or explicitly add `PATH` to the profile's `.env`.
+- **RPC timeout**: increase `QUANT_RPC_TIMEOUT_SEC` (default 120). `run_backtest_slice` may need 300s.
+- **DB not found**: first run `main.py --mode jq-bulk-sync` to pull data, or `--mode nlp-analyze` to generate the announcement DB.
+- **Plugin not loaded**: run `hermes plugins list --profile quant` to see whether quant is listed; if not, check that the symlink points the right way and that the id in `plugin.yaml` is `quant`.

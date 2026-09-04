@@ -1,6 +1,6 @@
-"""ML / AI 组件。
+"""ML / AI components.
 
-本包内的组件与主策略解耦：
-- 交互协议只走文件 / SQLite；不做进程内的深度耦合
-- 依赖可选：任何一个 ML 组件缺失，主链路仍然可以运行
+The components in this package are decoupled from the main strategy:
+- Interaction goes through files / SQLite only; no deep in-process coupling
+- Dependencies are optional: if any ML component is missing, the main flow still runs
 """

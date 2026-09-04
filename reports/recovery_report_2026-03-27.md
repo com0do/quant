@@ -43,7 +43,7 @@
 - JQ sync online regression:
   - Command: `uv run python scripts/jq_bulk_sync_smallcap.py ...`
   - Status: BLOCKED
-  - Reason: JQ daily query quota exceeded (`100万条` limit reached).
+  - Reason: JQ daily query quota exceeded (`1,000,000 rows` limit reached).
 
 ## Data State Snapshot
 

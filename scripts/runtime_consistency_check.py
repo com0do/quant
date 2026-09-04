@@ -60,8 +60,8 @@ def main() -> None:
         "xtquant_3m_backfill_hook_exists": _script_contains("scripts/run_daily_live_pipeline.sh", "sync_minute_csi1000_runtime.py")
         or _script_contains("README.md", "XTDATA_MINIMAL_SYNC_POLICY"),
         "notes": {
-            "archive_expected": "runtime更新应自动触发溢出归档",
-            "xtquant_expected": "后续需通过xtquant补前3个月数据（JQ窗口前15月~前3月）",
+            "archive_expected": "A runtime update should automatically trigger overflow archiving",
+            "xtquant_expected": "Afterwards, the most recent 3 months of data must be backfilled via xtquant (the JQ window covers months -15 to -3)",
         },
     }
 

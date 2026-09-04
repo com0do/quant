@@ -1,141 +1,141 @@
-# 量化监管压力应对手册
+# Playbook for Quantitative-Trading Regulatory Pressure
 
-> 现实识别：截至撰写日，A 股量化交易在总成交额中的占比接近 20%，官方与交易所在讨论把 25% 作为"进一步收紧"的信号阈值。相关政策工具包括**窗口指导、程序化交易申报、撤单频率限制、异常交易认定收紧、差异化收费**等。
+> Reality check: as of writing, quantitative trading accounts for close to 20% of total A-share trading value, and regulators and exchanges are discussing 25% as the signal threshold for "further tightening". Relevant policy tools include **window guidance, program-trading reporting, order-cancellation frequency limits, tighter abnormal-trading definitions, and differentiated fees**.
 >
-> 本手册的目标：让本仓库在监管收紧的每一步都**能自动适配**，避免账户被认定为"重点监控"或"异常交易"。
+> Goal of this playbook: let this repo **adapt automatically** at every step of regulatory tightening, and avoid the account being classified as "under key monitoring" or "abnormal trading".
 
 ---
 
-## 一、可能触发的监管手段与影响
+## 1. Possible Regulatory Measures and Their Impact
 
-| 手段 | 对个人量化的直接影响 |
+| Measure | Direct impact on individual quant traders |
 |------|-----------------------|
-| **申报程序化标识** | 需要在券商侧标记账户为程序化；一旦标记，撤单/申报数会被单独统计 |
-| **撤单/申报比限制** | 每日撤单数 / 申报数 > 阈值会被限流或警示 |
-| **异常交易认定** | 频繁申报撤销、大额挂撤、拉抬打压等会被认定为异常交易 |
-| **差异化撤单费** | 撤单频次高的账户按次收费显著上升，直接吃掉小盘策略利润 |
-| **窗口指导** | 交易所可能对高频账户做单向劝退（例如禁止申报、单日限流） |
-| **成交速度限制** | 极端情况下委托间隔、单笔最小时间片会有强制下限 |
-| **信息披露延时** | 深交所已经在讨论对程序化账户的行情延迟推送 |
+| **Program-trading flag reporting** | The account must be flagged as program-trading on the broker side; once flagged, cancellation/order counts are tracked separately |
+| **Cancel-to-order ratio limits** | A daily cancellations / orders ratio above the threshold triggers throttling or warnings |
+| **Abnormal-trading definition** | Frequent order-and-cancel, large resting-and-cancelled orders, price pushing/suppressing, etc. can be classified as abnormal trading |
+| **Differentiated cancellation fees** | Per-cancellation fees rise sharply for accounts with high cancellation frequency, directly eating the profit of small-cap strategies |
+| **Window guidance** | Exchanges may unilaterally discourage high-frequency accounts (e.g. banning order submission, per-day throttling) |
+| **Execution speed limits** | In extreme cases, order intervals and the minimum time per slice may be given a mandatory floor |
+| **Information disclosure delay** | The Shenzhen Stock Exchange is already discussing delayed market-data delivery for program-trading accounts |
 
-以上不一定同时全部出现，但**每一条都能让原本"盈亏平衡"的策略直接亏本**。
+Not all of these will necessarily appear at once, but **each one can turn a strategy that was "break-even" into a losing one**.
 
-## 二、本仓库的应对总则
+## 2. This Repo's General Response
 
-**总原则**：**"看起来像人 + 交易越少越好 + 每一次交易都尽可能一次成"。**
+**Overall principle**: **"Look like a human + the fewer trades the better + make every trade complete in one go whenever possible."**
 
-具体拆成 6 条：
+Broken down into 6 points:
 
-1. **降低总交易频次**：调仓周期从日频向 3-5 天甚至周频迁移。
-2. **降低撤单频次**：延长超时撤单阈值，减少追价次数。
-3. **降低单标的日内次数**：一个标的当日 ≤ 2 次委托（含撤重挂）。
-4. **降低切片数量**：TWAP 切片数从可能的 8-10 片降到 3-5 片。
-5. **降低申报密度**：不做 100 股微单密集挂单；确实要拆单就拆到中位数量级。
-6. **主动申报程序化标识**：与券商沟通做合规申报，进入监管"合规程序化"名单反而更安全。
+1. **Lower total trading frequency**: move the rebalance cycle from daily to 3-5 days or even weekly.
+2. **Lower cancellation frequency**: lengthen the order-timeout cancellation threshold and reduce the number of chase attempts.
+3. **Lower per-symbol intraday count**: at most 2 orders per symbol per day (including cancel-and-replace).
+4. **Lower the slice count**: reduce TWAP slices from possibly 8-10 down to 3-5.
+5. **Lower order-submission density**: no dense resting orders of 100 shares; when splitting orders is necessary, split down to a mid-range size.
+6. **Proactively report the program-trading flag**: file a compliant declaration with the broker; being on the regulator's "compliant program-trading" list is actually safer.
 
-## 三、逐参数的调整方案（可复制到 config/*.toml）
+## 3. Parameter-by-Parameter Adjustments (copy into config/*.toml)
 
-以下参数在 `quant/config.py` 里已经存在，只需要在配置中调紧。
+The parameters below already exist in `quant/config.py`; you only need to tighten them in the config.
 
-### 3.1 交易频次
+### 3.1 Trading Frequency
 
-| 参数 | 当前（`final_freeze_2025.toml`） | 收紧后建议 |
+| Parameter | Current (`final_freeze_2025.toml`) | Suggested after tightening |
 |------|----------|-----------|
-| `strategy.entry_interval_days` | `2` | `5`（周频调仓） |
+| `strategy.entry_interval_days` | `2` | `5` (weekly rebalance) |
 | `strategy.min_hold_days` | `2` | `5` |
-| `strategy.top_k` | `4` | `6-8`（换仓面变小时提高候选） |
+| `strategy.top_k` | `4` | `6-8` (raise the candidate count as the rebalance scope shrinks) |
 
-### 3.2 撤单与追价
+### 3.2 Cancellation and Chasing
 
-| 参数 | 位置 | 当前默认 | 收紧后建议 |
+| Parameter | Location | Current default | Suggested after tightening |
 |------|------|----------|-----------|
-| `daemon.order_timeout_sec` | `DaemonConfig` | `300`（5 分钟） | `900`（15 分钟） |
+| `daemon.order_timeout_sec` | `DaemonConfig` | `300` (5 minutes) | `900` (15 minutes) |
 | `daemon.max_chase_count` | `DaemonConfig` | `2` | `1` |
-| `daemon.chase_step_bps` | `DaemonConfig` | `8.0` | `4.0`（缩小追价幅度） |
-| `daemon.buy_chase_mode` | `DaemonConfig` | `"passive"` | 保持 `"passive"` |
-| `daemon.sell_chase_mode` | `DaemonConfig` | `"aggressive"` | 改 `"passive"`（除非崩盘冷却触发） |
+| `daemon.chase_step_bps` | `DaemonConfig` | `8.0` | `4.0` (smaller chase step) |
+| `daemon.buy_chase_mode` | `DaemonConfig` | `"passive"` | Keep `"passive"` |
+| `daemon.sell_chase_mode` | `DaemonConfig` | `"aggressive"` | Change to `"passive"` (unless the crash cooldown is triggered) |
 
-### 3.3 切片密度
+### 3.3 Slice Density
 
-| 参数 | 当前 | 收紧后建议 |
+| Parameter | Current | Suggested after tightening |
 |------|------|-----------|
 | `daemon.twap_slices` | `4` | `3` |
-| `daemon.slice_interval_sec` | `60` | `120`（拉长间隔） |
-| `daemon.max_daily_notional_per_stock` | `2,000,000` | 按账户规模缩到 15-20% |
+| `daemon.slice_interval_sec` | `60` | `120` (longer interval) |
+| `daemon.max_daily_notional_per_stock` | `2,000,000` | Scale down to 15-20% according to account size |
 
-### 3.4 单日单账户上限
+### 3.4 Per-Day, Per-Account Caps
 
-| 参数 | 位置 | 收紧后建议 |
+| Parameter | Location | Suggested after tightening |
 |------|------|-----------|
-| `risk.max_daily_orders` | `RiskConfig` | 从 `100` 降到 `40-60` |
-| `risk.max_daily_notional_pct` | `RiskConfig` | 从 `1.2` 降到 `0.6-0.8` |
+| `risk.max_daily_orders` | `RiskConfig` | Reduce from `100` to `40-60` |
+| `risk.max_daily_notional_pct` | `RiskConfig` | Reduce from `1.2` to `0.6-0.8` |
 
-### 3.5 网关侧硬防护
+### 3.5 Hard Protection on the Gateway Side
 
-- `xtquant_gateway`（见 `docs/50_live/03_xtquant_gateway_v2.md`）已有服务端风控墙。**新增**在 `xtquant_gateway/core.py` 或 `settings.py`：
-  - 每日撤单数上限（例如账户每日 ≤ 30 次撤单）
-  - 每标的每日委托数上限（例如 ≤ 2）
-  - 单笔最小停留时间（避免"秒撤"）
+- `xtquant_gateway` (see `docs/50_live/03_xtquant_gateway_v2.md`) already has a server-side risk-control wall. **Add** the following in `xtquant_gateway/core.py` or `settings.py`:
+  - A daily cancellation cap (e.g. at most 30 cancellations per account per day)
+  - A per-symbol daily order cap (e.g. at most 2)
+  - A minimum resting time per order (to avoid "instant cancels")
 
-这些属于**待落地**任务，见本文档末尾的"代码待办"。
+These are **pending** tasks; see the "Code TODO List" at the end of this document.
 
-## 四、策略侧的选择性回避
+## 4. Strategy-Side Selective Avoidance
 
-- **优先选择低换手策略**：多因子 + 周频截面（`csi1000_enhanced` + `entry_interval_days = 5`）自然低换手。
-- **优先避开高换手场景**：
-  - 分钟级形态识别
-  - 日内 T+0 套利（A 股本身不允许，但很多量化实际用担保品做等价 T+0，这个必须停）
-  - 网格类"低吸高抛"
-- 若集成海龟（见 `docs/20_strategy/04_strategy_schools_survey.md`），把加仓次数从传统的 4 次降到 2 次，减少申报数。
+- **Prefer low-turnover strategies**: multi-factor + weekly cross-sectional (`csi1000_enhanced` + `entry_interval_days = 5`) is naturally low-turnover.
+- **Prefer to avoid high-turnover scenarios**:
+  - Minute-level chart-pattern recognition
+  - Intraday T+0 arbitrage (A-shares do not allow it per se, but many quants do equivalent T+0 using collateral; this must stop)
+  - Grid-style "buy low, sell high" trading
+- If integrating Turtle trading (see `docs/20_strategy/04_strategy_schools_survey.md`), cut the number of add-ons from the traditional 4 to 2 to reduce order counts.
 
-## 五、账户与合规
+## 5. Account and Compliance
 
-1. **与券商沟通**：明确当前账户是否已在程序化名单；如无，主动做合规申报。
-2. **单账户规模自控**：单账户避免达到"重点监控"阈值（不同交易所口径不同，通常按"日均成交金额"或"申报数量"）。
-3. **多账户分散**：如果家庭有多个账户，**不建议**用同一个策略同时跑多账户——容易被认定为"同源程序化"。反而应该跑不同参数或不同策略。
-4. **信号与执行分离**：策略研究和数据同步用一个身份（云端/研究账号），实盘执行用另一个身份（本地 + QMT），避免风险交叉。
+1. **Talk to the broker**: confirm whether the account is already on the program-trading list; if not, proactively file a compliant declaration.
+2. **Self-limit single-account size**: keep a single account below the "key monitoring" threshold (definitions differ by exchange, usually based on "average daily trading value" or "order count").
+3. **Spread across accounts**: if the household has multiple accounts, it is **not recommended** to run the same strategy on several accounts at once, since that is easily classified as "same-source program trading". Run different parameters or different strategies instead.
+4. **Separate signals from execution**: use one identity for strategy research and data sync (cloud/research account) and another for live execution (local + QMT) to avoid cross-contamination of risk.
 
-## 六、GitHub Actions 与云端的定位
+## 6. The Role of GitHub Actions and the Cloud
 
-- `ADR-1` 已经规定：**GitHub Actions 只做编排，不做执行**。这一条在监管环境下更重要。
-- 云端职责：数据同步、回测漂移、因子分析、告警。
-- 本地职责：实盘下单、行情订阅、异常处置。
-- **绝不把交易凭据（券商登录、QMT token）放到云端**，即使加密也不行——一旦被追溯，"云端下单"的解释成本极高。
+- `ADR-1` already states: **GitHub Actions only orchestrates and never executes**. This matters even more in a tightening regulatory environment.
+- Cloud responsibilities: data sync, backtest drift, factor analysis, alerting.
+- Local responsibilities: live order placement, market-data subscription, exception handling.
+- **Never put trading credentials (broker login, QMT token) in the cloud**, even encrypted; if traced, the cost of explaining "cloud order placement" is extremely high.
 
-## 七、监控与预警
+## 7. Monitoring and Early Warning
 
-- 每日归档中加入以下指标（`quant/live/daily_report.py` 里已有部分）：
-  - 委托总数、撤单总数、撤单/申报比
-  - 单标的最大委托次数
-  - TWAP 切片总数
-  - 单笔平均停留时间
-- 出现以下任一条件时告警并**次日自动降频**：
-  - 撤单/申报比 > 30%
-  - 单日委托数 > `risk.max_daily_orders * 0.8`
-  - 券商发送任何形式的风险提示短信
+- Add the following metrics to the daily archive (partly already in `quant/live/daily_report.py`):
+  - Total orders, total cancellations, cancel-to-order ratio
+  - Max order count for a single symbol
+  - Total TWAP slice count
+  - Average resting time per order
+- Alert on any of the following conditions and **automatically reduce frequency the next day**:
+  - Cancel-to-order ratio > 30%
+  - Daily order count > `risk.max_daily_orders * 0.8`
+  - The broker sends a risk-warning SMS in any form
 
-自动降频的实现方式（尚未落地）：`quant/live/daemon.py` 读取昨日归档，如果触发预警，把当日 `entry_interval_days` 临时 × 2、`twap_slices` 临时 -1。
+How automatic frequency reduction would be implemented (not yet implemented): `quant/live/daemon.py` reads yesterday's archive and, if a warning is triggered, temporarily doubles that day's `entry_interval_days` (× 2) and temporarily reduces `twap_slices` by 1 (-1).
 
-## 八、代码待办清单
+## 8. Code TODO List
 
-以下**尚未实现**，是根据本手册需要新增的功能。列在这里作为 issue，任何 agent 修改代码时优先看这里：
+The following are **not yet implemented**; they are features to add based on this playbook. They are listed here as issues, and any agent modifying code should look here first:
 
-- [ ] `xtquant_gateway`：新增每日撤单数上限、每标的每日委托数上限、单笔最小停留时间。
-- [ ] `quant/live/daemon.py`：新增基于昨日归档的自动降频逻辑。
-- [ ] `quant/live/daily_report.py`：明确产出撤单/申报比、单标的最大委托次数、切片总数。
-- [ ] `config/live_qmt_http.toml` / `config/live_paper.toml`：加入本文档"3.2/3.3"里的收紧参数模板（先注释掉，等准备切换时启用）。
-- [ ] `docs/30_engine/01_engine_and_parameters.md`：加一段"监管收紧模式下的推荐参数"。
+- [ ] `xtquant_gateway`: add a daily cancellation cap, a per-symbol daily order cap, and a minimum resting time per order.
+- [ ] `quant/live/daemon.py`: add automatic frequency-reduction logic based on yesterday's archive.
+- [ ] `quant/live/daily_report.py`: explicitly output the cancel-to-order ratio, max order count for a single symbol, and total slice count.
+- [ ] `config/live_qmt_http.toml` / `config/live_paper.toml`: add the tightened-parameter templates from "3.2/3.3" of this document (commented out at first, enabled when ready to switch).
+- [ ] `docs/30_engine/01_engine_and_parameters.md`: add a section "Recommended parameters in regulatory-tightening mode".
 
-## 九、什么情况下退出量化
+## 9. When to Exit Quant Trading
 
-- 撤单费上升到把小盘策略的年化超额吃掉 80% 以上。
-- 券商主动限制账户可用委托数到不足以覆盖策略需要。
-- 监管认定我们的账户属于"异常交易"并做书面警示。
+- Cancellation fees rise to the point of eating more than 80% of the small-cap strategy's annualized excess return.
+- The broker restricts the account's available order count below what the strategy needs.
+- The regulator classifies our account as "abnormal trading" and issues a written warning.
 
-出现上述任一条，第一反应**不是找绕过方案**，而是评估是否切到更低频（例如月频或纯基金持有）。
+When any of these occurs, the first reaction is **not to look for a workaround**, but to evaluate switching to a lower frequency (e.g. monthly, or just holding funds).
 
 ---
 
-## 十、更新历史
+## 10. Update History
 
-- 初版：整理监管趋势 + 参数调整方案 + 代码待办。当前仓库尚未实现自动降频与网关侧撤单频次上限；文档明确标注为待落地。
+- First version: compiled the regulatory trends + parameter adjustment plan + code TODO. The repo does not yet implement automatic frequency reduction or the gateway-side cancellation-frequency cap; the document explicitly marks them as pending.

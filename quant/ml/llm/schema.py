@@ -1,6 +1,6 @@
-"""公告结构化 schema。
+"""Structured schema for announcements.
 
-一份公告 / 财报输入 → 一条 AnnouncementSignal 输出，落 SQLite。
+One announcement / financial-report input -> one AnnouncementSignal output, persisted to SQLite.
 """
 
 from __future__ import annotations
@@ -23,6 +23,8 @@ CATEGORIES = {
 
 SENTIMENTS = {"bullish", "bearish", "neutral"}
 
+# The vocabulary is deliberately Chinese: the values are matched literally against the LLM output
+# (see prompts/announcement_zh.md) and stored as-is, and the source announcements are Chinese.
 RISK_FLAG_VOCAB = [
     "减持", "增持", "问询函", "商誉减值", "经营异常", "诉讼",
     "高管变动", "停牌", "退市风险", "关联交易", "股份回购", "再融资",
@@ -32,7 +34,7 @@ RISK_FLAG_VOCAB = [
 
 @dataclass
 class AnnouncementInput:
-    """一份待分析的公告 / 报告原文。"""
+    """The raw text of one announcement / report to analyze."""
     code: str
     date: str
     title: str
@@ -49,7 +51,7 @@ class AnnouncementInput:
 
 @dataclass
 class AnnouncementSignal:
-    """LLM 提取后的结构化信号。字段严格对齐 prompt。"""
+    """Structured signal extracted by the LLM. Fields are strictly aligned with the prompt."""
     code: str
     date: str
     title: str

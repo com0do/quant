@@ -1,12 +1,12 @@
-"""DeepSeek Chat Completions 客户端（薄壳）。
+"""DeepSeek Chat Completions client (thin wrapper).
 
-用 OpenAI 兼容协议直连 DeepSeek 官方 API（https://api.deepseek.com）。
-不做 stream、不做 function-calling、不做 agent 循环——那些需求走 hermes-agent 层。
+Talks to the official DeepSeek API (https://api.deepseek.com) directly over the OpenAI-compatible protocol.
+No streaming, no function-calling, no agent loop; those needs go through the hermes-agent layer.
 
-配置（`.env`）：
-    DEEPSEEK_API_KEY=<必填>
-    DEEPSEEK_MODEL=deepseek-chat        # 默认 deepseek-chat；也可 deepseek-reasoner 等
-    DEEPSEEK_BASE_URL=https://api.deepseek.com   # 默认官方；可覆盖成硅基流动/自建
+Configuration (`.env`):
+    DEEPSEEK_API_KEY=<required>
+    DEEPSEEK_MODEL=deepseek-chat        # default deepseek-chat; deepseek-reasoner etc. also work
+    DEEPSEEK_BASE_URL=https://api.deepseek.com   # official by default; can be overridden (SiliconFlow / self-hosted)
     DEEPSEEK_TIMEOUT_SEC=60
     DEEPSEEK_TEMPERATURE=0.1
     DEEPSEEK_MAX_TOKENS=1024
@@ -45,7 +45,7 @@ class DeepSeekSettings:
 
 
 class DeepSeekUnavailableError(RuntimeError):
-    """DeepSeek 端点不可达 / 认证失败 / 非预期响应。"""
+    """DeepSeek endpoint unreachable / authentication failed / unexpected response."""
 
 
 class DeepSeekClient:
@@ -61,7 +61,7 @@ class DeepSeekClient:
         return h
 
     def ping(self) -> bool:
-        """轻量探活：/models 端点应返回 2xx / 4xx（后者说明服务活着但可能鉴权不通）。"""
+        """Lightweight liveness probe: the /models endpoint should return 2xx / 4xx (the latter means the service is alive but auth may fail)."""
         if not self.settings.api_key:
             return False
         try:
@@ -80,10 +80,10 @@ class DeepSeekClient:
         json_mode: bool = True,
         temperature: float | None = None,
     ) -> str:
-        """调用 chat/completions，返回 assistant 文本。
+        """Call chat/completions and return the assistant text.
 
-        json_mode=True → 请求 `response_format={"type":"json_object"}`；
-        DeepSeek v3+ 已原生支持，其余靠 system prompt "只输出 JSON" 约束兜底。
+        json_mode=True -> request `response_format={"type":"json_object"}`;
+        DeepSeek v3+ supports it natively, otherwise the system prompt "output JSON only" acts as the fallback constraint.
         """
         payload: dict[str, Any] = {
             "model": self.settings.model,

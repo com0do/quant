@@ -1,185 +1,185 @@
-# 三、引擎与参数
+# 3. Engine and Parameters
 
-> 本篇合并了 3 份引擎/运行相关文档：引擎与参数说明、冻结运行手册、可提交清单。
-> 想调参数、跑回测、准备提交时读这一篇。
+> This document merges 3 engine/run-related docs: the engine and parameter reference, the frozen runbook, and the submission checklist.
+> Read this one when you want to tune parameters, run backtests, or prepare a commit.
 
-## 目录
+## Table of Contents
 
-- [1. 引擎与参数说明](#1-引擎与参数说明)
-- [2. 冻结运行手册](#2-冻结运行手册)
-- [3. 可提交清单](#3-可提交清单)
-
----
-
-<a id="1-引擎与参数说明"></a>
-# 引擎与参数说明（最终版）
-
-本文面向当前冻结方案，解释三件事：
-
-1. 参数含义（`config/final_freeze_2025.toml`）
-2. 回测引擎工作流程（`quant/backtest/engine.py`）
-3. `regime_select`（代码中为 `_calc_regime_switch_params`）的判定与生效方式
+- [1. Engine and Parameter Reference](#1-engine-and-parameter-reference)
+- [2. Frozen Runbook](#2-frozen-runbook)
+- [3. Submission Checklist](#3-submission-checklist)
 
 ---
 
-## 1) 参数含义（按模块）
+<a id="1-engine-and-parameter-reference"></a>
+# Engine and Parameter Reference (Final)
+
+This document targets the current frozen setup and explains three things:
+
+1. What the parameters mean (`config/final_freeze_2025.toml`)
+2. How the backtest engine works (`quant/backtest/engine.py`)
+3. How `regime_select` (`_calc_regime_switch_params` in the code) decides its state and takes effect
+
+---
+
+## 1) Parameter Reference (by module)
 
 ### Data
 
-- `source`：数据源，当前为 `sqlite`
-- `sqlite_db_path`：主库路径（价格、快照、指数日线）
-- `start_date` / `end_date`：回测时间窗
-- `benchmark_index`：基准指数代码（当前中证1000）
+- `source`: data source, currently `sqlite`
+- `sqlite_db_path`: main DB path (prices, snapshots, index daily bars)
+- `start_date` / `end_date`: backtest time window
+- `benchmark_index`: benchmark index code (currently CSI 1000)
 
-### Strategy - 核心交易参数
+### Strategy - Core Trading Parameters
 
-- `strategy_names` / `strategy_weights`：策略列表和权重
-- `buy_score_threshold` / `sell_score_threshold`：买卖分阈值
-- `top_k` / `max_positions`：每次候选数量和最大持仓数
-- `entry_interval_days`：调仓/开仓节奏（按交易日）
-- `stop_loss_pct`：固定止损
-- `trailing_stop_pct`：移动止损
-- `min_hold_days`：最小持有天数
+- `strategy_names` / `strategy_weights`: strategy list and weights
+- `buy_score_threshold` / `sell_score_threshold`: buy/sell score thresholds
+- `top_k` / `max_positions`: number of candidates per round and maximum number of holdings
+- `entry_interval_days`: rebalance/entry cadence (in trading days)
+- `stop_loss_pct`: fixed stop-loss
+- `trailing_stop_pct`: trailing stop-loss
+- `min_hold_days`: minimum holding days
 
-### Strategy - 风险与开仓约束
+### Strategy - Risk and Entry Constraints
 
-- `max_single_trade_risk_pct`：单笔风险预算
-- `max_single_position_loss_pct`：单票最大可承受亏损
-- `max_total_exposure_pct`：组合总仓位上限
-- `open_vol_min` / `open_vol_max`：波动窗口过滤（过低无弹性，过高不稳定）
-- `require_above_ma200`：是否强制 MA200 上方开仓
-- `allow_short_below_ma200_exception` 与 `ma200_exception_*`：MA200 下方例外条件
+- `max_single_trade_risk_pct`: per-trade risk budget
+- `max_single_position_loss_pct`: maximum tolerable loss per stock
+- `max_total_exposure_pct`: portfolio total exposure cap
+- `open_vol_min` / `open_vol_max`: volatility-window filter (too low means no elasticity, too high means unstable)
+- `require_above_ma200`: whether to force entries only above MA200
+- `allow_short_below_ma200_exception` and `ma200_exception_*`: exception conditions for below MA200
 
-### Strategy - 市场过滤与动态仓位
+### Strategy - Market Filter and Dynamic Position Sizing
 
-- `market_regime_gate_enable`：市场门控总开关
-- `market_regime_min_win_prob`：市场/个股综合胜率下限
-- `market_regime_min_breadth`：市场广度下限
-- `monthly_dynamic_exposure_enable`：按月软动态仓位
-- `monthly_exposure_min_pct` / `monthly_exposure_max_pct`：月度仓位上下界
-- `crash_ret5_threshold` / `crash_ret20_threshold` / `crash_breadth_threshold`：硬崩盘判据
-- `crash_cooldown_days`：崩盘后冷却空仓天数
+- `market_regime_gate_enable`: master switch for the market gate
+- `market_regime_min_win_prob`: lower bound of the combined market/stock win probability
+- `market_regime_min_breadth`: lower bound of market breadth
+- `monthly_dynamic_exposure_enable`: monthly soft dynamic position sizing
+- `monthly_exposure_min_pct` / `monthly_exposure_max_pct`: monthly lower/upper bounds on position size
+- `crash_ret5_threshold` / `crash_ret20_threshold` / `crash_breadth_threshold`: hard crash criteria
+- `crash_cooldown_days`: number of flat (no-position) cooldown days after a crash
 
-### Strategy - Regime Select（参数切换）
+### Strategy - Regime Select (parameter switching)
 
-- `regime_param_switch_enable`：参数切换开关
-- `regime_switch_breadth_risk_on` / `regime_switch_breadth_risk_off`：风险开/关广度阈值
-- `regime_switch_top_k_delta_on` / `_off`：风险态对 `top_k` 的增减
-- `regime_switch_sell_thr_delta_on` / `_off`：风险态对卖阈值的偏移
-- `regime_switch_entry_interval_mult_on` / `_off`：风险态对调仓频率的倍率
-- `regime_switch_exposure_mult_on` / `_off`：风险态对可用仓位上限的倍率
+- `regime_param_switch_enable`: parameter-switching switch
+- `regime_switch_breadth_risk_on` / `regime_switch_breadth_risk_off`: breadth thresholds for risk-on/off
+- `regime_switch_top_k_delta_on` / `_off`: increment/decrement applied to `top_k` in the risk state
+- `regime_switch_sell_thr_delta_on` / `_off`: offset applied to the sell threshold in the risk state
+- `regime_switch_entry_interval_mult_on` / `_off`: multiplier applied to rebalance frequency in the risk state
+- `regime_switch_exposure_mult_on` / `_off`: multiplier applied to the available exposure cap in the risk state
 
 ### Execution
 
-- `buy_fee` / `sell_fee`：交易费率
-- `slippage_bps`：滑点（bps）
+- `buy_fee` / `sell_fee`: trading fee rates
+- `slippage_bps`: slippage (bps)
 
 ---
 
-## 2) 引擎工作方式（逐日）
+## 2) How the Engine Works (day by day)
 
-引擎主流程可概括为：
+The engine's main flow can be summarized as:
 
-1. **载入与特征构建**
-   - 从 SQLite 取价格、快照、因子
-   - 构建宽表与技术特征（MA、MACD、量能、形态信号）
+1. **Load and feature construction**
+   - Fetch prices, snapshots and factors from SQLite
+   - Build wide tables and technical features (MA, MACD, volume, chart-pattern signals)
 
-2. **每日循环**
-   - 更新市场状态（广度、趋势、崩盘判据）
-   - 生成当日可交易池（停牌/流动性过滤 + 可选估值过滤）
-   - 计算 `buy_scores` / `sell_scores`
+2. **Daily loop**
+   - Update market state (breadth, trend, crash criteria)
+   - Generate the day's tradable pool (trading suspension / liquidity filters + optional valuation filter)
+   - Compute `buy_scores` / `sell_scores`
 
-3. **先风控后交易**
-   - 崩盘触发时先平仓并进入冷却
-   - 日常风险退出：止损、移动止损、卖分信号
-   - 调仓日执行目标持仓对齐与新开仓
+3. **Risk control first, then trading**
+   - On a crash trigger, close all positions first and enter cooldown
+   - Routine risk exits: stop-loss, trailing stop-loss, sell-score signals
+   - On rebalance days, align holdings to the target and open new positions
 
-4. **仓位与下单约束**
-   - 总仓位上限约束（静态 + 月度动态 + regime_select）
-   - 单笔风险预算与资金预算共同约束下单数量
-   - 交易成本按 `execution` 配置统一计入
+4. **Position-size and order constraints**
+   - Total exposure cap constraints (static + monthly dynamic + regime_select)
+   - Per-trade risk budget and the capital budget jointly constrain order size
+   - Trading costs are applied uniformly per the `execution` config
 
-5. **输出**
-   - 净值曲线、交易明细、核心指标（年化、超额、夏普、回撤）
+5. **Output**
+   - Equity curve, trade details, core metrics (annualized return, excess return, Sharpe ratio, drawdown)
 
 ---
 
-## 3) regime_select 逻辑（`_calc_regime_switch_params`）
+## 3) regime_select Logic (`_calc_regime_switch_params`)
 
-该逻辑是“参数切换”，不是直接改策略分数。
+This logic is "parameter switching"; it does not directly change strategy scores.
 
-### 3.1 状态判定
+### 3.1 State Determination
 
-输入：
+Inputs:
 
-- `breadth = mean(close > ma20)`（市场广度）
-- `bench_ret20`（基准20日收益）
+- `breadth = mean(close > ma20)` (market breadth)
+- `bench_ret20` (benchmark 20-day return)
 
-判定：
+Determination:
 
-- `risk_on`：`breadth >= risk_on_threshold` 且 `bench_ret20 > 0`
-- `risk_off`：`breadth <= risk_off_threshold` 或 `bench_ret20 < 0`
-- 否则 `neutral`
+- `risk_on`: `breadth >= risk_on_threshold` and `bench_ret20 > 0`
+- `risk_off`: `breadth <= risk_off_threshold` or `bench_ret20 < 0`
+- otherwise `neutral`
 
-### 3.2 参数映射
+### 3.2 Parameter Mapping
 
-对基础参数做态依赖变换：
+State-dependent transforms applied to the base parameters:
 
 - `top_k = base_top_k + delta`
 - `sell_threshold = base_sell_threshold + delta`
 - `entry_interval_days = round(base_entry_interval * mult)`
 - `exposure_cap = base_exposure_cap * mult`
 
-并做边界保护：
+With boundary protections:
 
 - `top_k >= 1`
 - `entry_interval_days >= 1`
-- `sell_threshold` 限制在合理范围
-- `exposure_cap` 不超过原始上限
+- `sell_threshold` is clamped to a reasonable range
+- `exposure_cap` does not exceed the original cap
 
-### 3.3 直观含义
+### 3.3 Intuition
 
-- **risk_on**：可更积极（更快调仓/更高仓位或更宽候选）
-- **risk_off**：可更保守（更慢调仓/更低仓位/更严格退出）
+- **risk_on**: can be more aggressive (faster rebalancing / higher position size or a wider candidate set)
+- **risk_off**: can be more conservative (slower rebalancing / lower position size / stricter exits)
 
-当前冻结配置里，核心保守动作是 `risk_off` 降低有效仓位并放慢节奏。
-
----
-
-## 4) 为什么要冻结参数
-
-- 年内样本迭代过多会放大“新闻-经营-行情”同周期耦合，外推风险高
-- 平台区内继续调参，收益边际下降而过拟合风险上升
-- 当前方案已具备可执行收益与可控回撤，进入“监控优先”阶段更合理
+In the current frozen config, the core conservative action is that `risk_off` lowers effective position size and slows the cadence.
 
 ---
 
-<a id="2-冻结运行手册"></a>
+## 4) Why Freeze the Parameters
 
-# 最终冻结运行手册
+- Too many in-year sample iterations amplify the same-cycle coupling of "news - business - market action", so extrapolation risk is high
+- Within a plateau region, further tuning yields diminishing marginal returns while overfitting risk rises
+- The current setup already delivers executable returns and controlled drawdown, so moving into a "monitoring first" phase makes more sense
 
-## 1) 当前冻结配置
+---
 
-- 主配置：`config/final_freeze_2025.toml`
-- 对照配置：`config/branch_alpha_regime_switch.toml`
+<a id="2-frozen-runbook"></a>
 
-这两个配置都保留在仓库中。`config/` 历史参数文件也已恢复，便于后续对比。
+# Final Frozen Runbook
 
-## 2) 最终回测执行
+## 1) Current Frozen Config
+
+- Main config: `config/final_freeze_2025.toml`
+- Comparison config: `config/branch_alpha_regime_switch.toml`
+
+Both configs are kept in the repo. The historical parameter files under `config/` have also been restored for later comparison.
+
+## 2) Final Backtest Run
 
 ```bash
 uv run python main.py --mode backtest --config config/final_freeze_2025.toml
 ```
 
-输出文件（已清理为最小集合）：
+Output files (cleaned down to a minimal set):
 
 - `output/backtest_metrics.json`
 - `output/backtest_equity_curve.csv`
 - `output/backtest_trades.csv`
 
-## 3) 聚宽数据拉取能力（保留）
+## 3) JoinQuant Data-Pulling Capability (retained)
 
-可继续使用以下链路：
+The following pipelines can continue to be used:
 
 - `uv run python main.py --mode jq-bulk-sync --config config/final_freeze_2025.toml`
 - `scripts/run_tomorrow_sync.sh`
@@ -190,56 +190,56 @@ uv run python main.py --mode backtest --config config/final_freeze_2025.toml
 - `scripts/check_missing_smallcap_data.py`
 - `scripts/prepare_snapshot_retry.py`
 
-## 4) 停止过拟合的终止规则
+## 4) Termination Rules to Stop Overfitting
 
-- 不再在同一年样本内持续调参。
-- 触发再优化需满足至少一条：
-  - 连续 2 个月相对基准超额为负；
-  - 实盘/仿真回撤超过冻结期回撤上限的 1.3 倍；
-  - 市场结构发生显著变化（成交额/波动中枢持续漂移）。
+- Stop continuously tuning parameters on the same year's sample.
+- Re-optimization requires at least one of the following to be triggered:
+  - Excess return vs. the benchmark is negative for 2 consecutive months;
+  - Live/simulated drawdown exceeds 1.3 times the drawdown cap of the frozen period;
+  - A significant change in market structure (trading value / volatility center keeps drifting).
 
-## 5) 后续维护建议
+## 5) Suggested Follow-Up Maintenance
 
-- 只做“验证与监控”，不做日常参数搜索。
-- 按月输出一次冻结配置相对基准的滚动评估。
-- 至少累计一个季度新数据后，再进入下一轮参数重估。
+- Do only "validation and monitoring"; no routine parameter search.
+- Produce a rolling evaluation of the frozen config against the benchmark once a month.
+- Accumulate at least one quarter of new data before starting the next round of parameter re-estimation.
 
 ---
 
-<a id="3-可提交清单"></a>
+<a id="3-submission-checklist"></a>
 
-# 可提交清单
+# Submission Checklist
 
-以下清单用于“只提交稳定生产所需内容”，避免把实验垃圾一并提交。
+This checklist is for "committing only what stable production needs", so experimental junk is not committed along with it.
 
-## A. 建议提交（代码与文档）
+## A. Recommended to Commit (code and docs)
 
-- `quant/` 下所有实际运行代码改动
+- All actual runtime code changes under `quant/`
 - `config/final_freeze_2025.toml`
-- `config/branch_alpha_regime_switch.toml`（对照配置）
-- `config/adaptive_plus_base.toml`（基础兼容配置）
+- `config/branch_alpha_regime_switch.toml` (comparison config)
+- `config/adaptive_plus_base.toml` (base compatibility config)
 - `README.md`
 - `docs/INDEX.md`
 - `docs/FINAL_FREEZE_RUNBOOK.md`
 - `docs/ENGINE_PARAMETER_REGIME_GUIDE.md`
 - `docs/SUBMISSION_CHECKLIST.md`
 
-## B. 明确不提交（运行产物）
+## B. Explicitly Do Not Commit (runtime artifacts)
 
 - `output/*`
 - `data/*.db-wal`
 - `data/*.db-shm`
 - `data/backups/*`
 
-## C. 可选提交（视团队规范）
+## C. Optional (depending on team conventions)
 
-- `third-party/`：仅在其中确有必须版本锁定资产时提交
+- `third-party/`: commit only if it contains assets that genuinely require version pinning
 
-## D. 提交前检查
+## D. Pre-Commit Checks
 
-- 回测命令能跑通：
+- The backtest command runs through:
   - `uv run python main.py --mode backtest --config config/final_freeze_2025.toml`
-- 聚宽同步链路可用（至少命令可执行）：
+- The JoinQuant sync pipeline works (at least the command is executable):
   - `uv run python main.py --mode jq-bulk-sync --config config/final_freeze_2025.toml`
-- 文档入口完整：
-  - `docs/INDEX.md` 已包含冻结手册、参数引擎说明、提交清单
+- The doc entry points are complete:
+  - `docs/INDEX.md` already includes the frozen runbook, the parameter/engine reference, and the submission checklist

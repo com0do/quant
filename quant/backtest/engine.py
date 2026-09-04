@@ -284,13 +284,13 @@ def _calc_weekly_adaptive_weight(asof: pd.Timestamp, matrices: dict, cfg: AppCon
     min_w = float(getattr(cfg.strategy, "weekly_adaptive_min", 0.2))
     max_w = float(getattr(cfg.strategy, "weekly_adaptive_max", 0.8))
     neu_w = float(getattr(cfg.strategy, "weekly_adaptive_neutral", 0.5))
-    # 热门趋势越强，适度降低逆向中线仓位；震荡回撤时提升中线仓位
+    # The stronger the hot trend, the more the contrarian mid-term position is trimmed; raise it in choppy / pullback markets
     if breadth >= 0.68 and med20 >= 0.05:
         w = min_w
     elif breadth <= 0.50 or med20 <= 0.0:
         w = max_w
     else:
-        # 在 [0.5, 0.68] 区间线性插值
+        # Linear interpolation over [0.5, 0.68]
         t = (breadth - 0.50) / (0.68 - 0.50)
         w = max_w + (min_w - max_w) * max(0.0, min(1.0, t))
         w = 0.7 * w + 0.3 * neu_w

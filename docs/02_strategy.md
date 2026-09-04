@@ -1,505 +1,505 @@
-# 二、策略与信号
+# 2. Strategy and Signals
 
-> 本篇合并了 4 份策略相关文档：截面策略开发手册、量价形态与心理、A/B/C/D 形态信号实例、策略流派综述。
-> 学量化、看聚宽社区策略前必读。
+> This document merges 4 strategy-related docs: the cross-sectional strategy development guide, price-volume patterns and psychology, the A/B/C/D chart-pattern signal examples, and the strategy schools survey.
+> Required reading before learning quant or studying JoinQuant community strategies.
 
-## 目录
+## Table of Contents
 
-- [1. 截面策略开发手册](#1-截面策略开发手册)
-- [2. 量价形态与心理预期](#2-量价形态与心理预期)
-- [3. A/B/C/D 形态信号实例](#3-形态信号实例)
-- [4. 策略流派综述与集成决策（多因子/海龟/缠论）](#4-策略流派综述)
+- [1. Cross-Sectional Strategy Development Guide](#1-cross-sectional-strategy-development-guide)
+- [2. Price-Volume Patterns and Market Psychology](#2-price-volume-patterns-and-market-psychology)
+- [3. A/B/C/D Chart-Pattern Signal Examples](#3-chart-pattern-signal-examples)
+- [4. Strategy Schools Survey and Integration Decisions (multi-factor / Turtle / Chan Theory)](#4-strategy-schools-survey)
 
 ---
 
-<a id="1-截面策略开发手册"></a>
-# 截面策略开发手册（恢复版）
+<a id="1-cross-sectional-strategy-development-guide"></a>
+# Cross-Sectional Strategy Development Guide (Restored Version)
 
-## 一、策略类型定义
+## 1. Strategy Type Definition
 
-- 策略类型：截面策略（Cross-Section）
-- 核心动作：在同一时点比较股票，买入得分最高的前 N 只。
+- Strategy type: cross-sectional strategy
+- Core action: compare stocks at the same point in time and buy the top N by score.
 
-## 二、因子框架（可直接落地）
+## 2. Factor Framework (directly implementable)
 
-## 1) 因子大类
+## 1) Factor Categories
 
-- 动量：近 20 日 / 60 日收益率
-- 价值：PE、PB（可扩展 PEV）
-- 质量：ROE、毛利率、营收增速
-- 风险：波动率、换手率、流动性
-- 技术：MA、MACD、RSI、KDJ、成交量趋势等
+- Momentum: 20-day / 60-day returns
+- Value: PE, PB (extensible to PEV)
+- Quality: ROE, gross margin, revenue growth
+- Risk: volatility, turnover rate, liquidity
+- Technical: MA, MACD, RSI, KDJ, volume trend, etc.
 
-## 2) 基础打分模板
+## 2) Basic Scoring Template
 
 ```text
-得分 = 动量 * 0.3 + 价值 * 0.3 + 质量 * 0.3 + 低波动 * 0.1
+Score = momentum * 0.3 + value * 0.3 + quality * 0.3 + low_volatility * 0.1
 ```
 
-可执行定义示例：
+Example of executable definitions:
 
-- 价值得分 = `1 / PB`
-- 质量得分 = `ROE`
-- 动量得分 = `近20日收益率`
-- 低波动得分 = `1 / 近20日收益率标准差`
+- Value score = `1 / PB`
+- Quality score = `ROE`
+- Momentum score = `20-day return`
+- Low-volatility score = `1 / 20-day return standard deviation`
 
-## 三、交易规则参数
+## 3. Trading Rule Parameters
 
-- 调仓周期：日 / 周 / 月（截面常用周/月）
-- 持仓数量：20 / 30 / 50
-- 股票池：全市场 / 沪深300 / 中证500 / 中证1000 / 小微盘
-- 过滤：ST、停牌、次新（如上市不足 60 日）
+- Rebalance cycle: daily / weekly / monthly (weekly/monthly are common for cross-sectional)
+- Number of holdings: 20 / 30 / 50
+- Stock universe: whole market / CSI 300 / CSI 500 / CSI 1000 / micro-cap
+- Filters: ST, trading suspension, recently listed stocks (e.g. listed fewer than 60 days)
 
-## 四、风险参数（必须）
+## 4. Risk Parameters (mandatory)
 
-- 单票最大仓位：5%~10%
-- 行业最大仓位：20%~30%
-- 止盈止损：固定止损 + 移动止损
-- 最大回撤控制：触发后降仓或停止交易
+- Max single-stock position: 5%~10%
+- Max industry position: 20%~30%
+- Take-profit / stop-loss: fixed stop-loss + trailing stop-loss
+- Maximum drawdown control: cut positions or stop trading once triggered
 
-## 五、回测参数与评估指标
+## 5. Backtest Parameters and Evaluation Metrics
 
-## 1) 回测参数
+## 1) Backtest Parameters
 
-- 年限：建议 >= 5 年（受数据权限时可先 1 年验证）
-- 交易成本：
-  - 买入 0.03%
-  - 卖出 0.13%
-- 滑点：建议至少 0.05%~0.1%，小盘压力测试可提升到 0.1%~0.3%
+- Horizon: >= 5 years recommended (if data permissions are limited, validate on 1 year first)
+- Trading costs:
+  - Buy 0.03%
+  - Sell 0.13%
+- Slippage: at least 0.05%~0.1% recommended; raise to 0.1%~0.3% for small-cap stress tests
 
-## 2) 核心评估指标
+## 2) Core Evaluation Metrics
 
-- 年化收益
-- 最大回撤
-- 夏普比率（经验阈值：>1.5 更稳）
-- 胜率
-- 盈亏比
-- 年度稳定性（样本外一致性）
+- Annualized return
+- Maximum drawdown
+- Sharpe ratio (rule-of-thumb threshold: > 1.5 is steadier)
+- Win rate
+- Profit/loss ratio
+- Year-by-year stability (out-of-sample consistency)
 
-## 六、最简可跑流程
+## 6. Minimal Runnable Workflow
 
-1. 准备数据接口（JQ/QMT/本地 SQLite）
-2. 编写因子计算
-3. 编写截面排序打分
-4. 编写调仓与交易执行逻辑
-5. 回测 + 样本外验证
-6. 小资金实盘跟踪（先验证执行质量）
+1. Prepare the data interface (JQ/QMT/local SQLite)
+2. Write the factor computation
+3. Write cross-sectional ranking and scoring
+4. Write the rebalance and trade-execution logic
+5. Backtest + out-of-sample validation
+6. Track with small live capital (verify execution quality first)
 
-## 七、每周执行样例
+## 7. Weekly Execution Example
 
-1. 每周一获取股票池
-2. 剔除 ST、停牌、次新
-3. 计算因子：动量、低波、技术趋势
-4. 标准化并等权/加权打分
-5. 选前 30 名等权持有
-6. 下周一再平衡
-
----
-
-<a id="2-量价形态与心理预期"></a>
-
-# 量价形态与心理预期规则手册
-
-> 目标：把“图形背后的市场心理”转为可执行的量化规则，服务于买入时机与卖出风控。  
-> 适用：中证 1000 / 中证 2000 小盘交易，日频决策 + 分钟级执行监控。
-
-## 1. 核心理念：先读心理，再下规则
-
-你提出的关键点非常准确：  
-**正双肩/头肩不是线条本身，而是市场参与者对“前高是否还能突破”的共识变化。**
-
-量化实现里，我们不做“主观猜图”，而是做三步：
-
-- 用价格结构识别“是否多次冲顶失败”
-- 用成交量判断“这次反抽是否健康，还是诱多接盘”
-- 用趋势框架过滤（`MA200`/`MA50`）决定是否允许开仓
-
-这等于把“如果我是市场参与者会怎么想”映射成了可计算条件。
+1. Fetch the stock universe every Monday
+2. Remove ST, suspended and recently listed stocks
+3. Compute factors: momentum, low volatility, technical trend
+4. Standardize and score with equal or custom weights
+5. Pick the top 30 and hold them equally weighted
+6. Rebalance again next Monday
 
 ---
 
-## 2. 长中短三层趋势框架（按你的习惯）
+<a id="2-price-volume-patterns-and-market-psychology"></a>
 
-- **长期趋势**：`MA200`
-  - 默认不买 `close < MA200` 的标的
-  - 仅保留短线例外通道（见第 5 节）
-- **中期趋势**：`MA50`
-  - 用于识别中期结构是否走坏（例如冲顶后跌回 `MA50`）
-- **短期行为**：`ret_5` + 量能比 + `MACD`
-  - 不单看“红K”，必须结合量能与 MACD 强弱
+# Price-Volume Patterns and Market-Psychology Expectation Rulebook
 
----
+> Goal: turn the "market psychology behind the chart" into executable quantitative rules that serve buy timing and sell-side risk control.  
+> Scope: small-cap trading in CSI 1000 / CSI 2000, daily decisions + minute-level execution monitoring.
 
-## 3. 正双肩 / 头肩：为什么偏卖出信号
+## 1. Core Idea: Read the Psychology First, Then Write the Rules
 
-心理过程（量化视角）：
+The key point you raised is spot on:  
+**A double top / head-and-shoulders is not the lines themselves, but the shift in consensus among market participants on "whether the previous high can still be broken".**
 
-- 第一次冲顶：多空分歧开始出现
-- 第二次冲顶（或头部）无法有效突破：持股者不安增强
-- 跌破颈线并放量：多头信念转弱，卖压释放
+In the quantitative implementation we do not "guess charts subjectively"; we do three steps:
 
-当前系统中的量化近似（`top_break_risk`）：
+- Use price structure to identify "whether repeated pushes to the top have failed"
+- Use trading volume to judge "whether this rebound is healthy, or a bull trap luring in bag-holders"
+- Use the trend framework (`MA200`/`MA50`) as a filter to decide whether opening positions is allowed
 
-- 近阶段多次接近高位（“双顶/多顶”特征）
-- 回落至 `MA50` 下方并出现短期转弱
-- 同时量能放大（`vol_ratio20` 较高）
-
-结果：
-
-- 买入评分惩罚
-- 卖出紧迫度提升
+This amounts to mapping "what would I think if I were a market participant" into computable conditions.
 
 ---
 
-## 4. 倒双肩 / 倒头肩：为什么偏买入信号
+## 2. Three-Layer Trend Framework: Long, Medium, Short (per your habit)
 
-心理过程（量化视角）：
-
-- 下跌后第一次反弹失败：市场仍悲观
-- 二次下探不再创新低、卖压衰减：恐慌边际减弱
-- 右肩抬高 + 突破颈线：资金共识转向，趋势可能扭转
-
-量化映射（当前实现）：
-
-- 低位反弹确认：`ret_5 > 0`、`close > MA5`、`MA5 >= MA10`
-- MACD 走强：`DIF > DEA` 且 `HIST > 0`
-- 量能匹配：`vol_ratio20` 温和放大（避免无量反弹）
-- 同时仍受 `MA200/MA50` 约束（防止在长空结构里盲目抄底）
+- **Long-term trend**: `MA200`
+  - By default, do not buy symbols with `close < MA200`
+  - Keep only a short-term exception channel (see Section 5)
+- **Medium-term trend**: `MA50`
+  - Used to identify whether the medium-term structure has turned bad (e.g. falling back to `MA50` after a top push)
+- **Short-term behavior**: `ret_5` + volume ratio + `MACD`
+  - Do not look only at a "red candle" (up candle); it must be combined with volume and MACD strength
 
 ---
 
-## 5. “倒车接人/诱多”防线（你特别关心）
+## 3. Double Top / Head-and-Shoulders: Why They Lean Toward Sell Signals
 
-你提到的场景：  
-**下跌中突然拉出上升线，且成交量异常大，容易是散户接盘，随后继续跌。**
+Psychological process (quant view):
 
-已固化的风险判别（`trap_rebound`）：
+- First push to the top: disagreement between bulls and bears starts to appear
+- Second push (or the head) fails to break through effectively: holders grow more uneasy
+- Break below the neckline on rising volume: bullish conviction weakens, selling pressure is released
 
-- 背景仍偏弱：`MA20 < MA60` 或 `ret_20 < 0`
-- 短线反抽：`ret_5 > 0`
-- 异常放量：`vol_ratio20 > 1.8`
-- MACD 未转强：`HIST < 0` 且 `DIF < DEA`
+The current quantitative approximation in the system (`top_break_risk`):
 
-处理方式：
+- Multiple recent approaches to the high ("double top / multiple top" characteristics)
+- A pullback below `MA50` with short-term weakening
+- Volume expanding at the same time (`vol_ratio20` is high)
 
-- 买入评分显著扣分（默认不追）
-- 卖出紧迫度增加（持仓优先减仓/止损）
+Result:
+
+- Buy-score penalty
+- Higher sell urgency
 
 ---
 
-## 6. MA200 下方的“短线例外”
+## 4. Inverse Double Bottom / Inverse Head-and-Shoulders: Why They Lean Toward Buy Signals
 
-你强调“通常不做 MA200 下方，但短线时例外”。  
-系统已支持例外通道（默认开）：
+Psychological process (quant view):
+
+- After a decline, the first rebound fails: the market is still pessimistic
+- The second dip no longer makes a new low and selling pressure fades: marginal panic weakens
+- Higher right shoulder + neckline breakout: capital consensus turns, and the trend may reverse
+
+Quantitative mapping (current implementation):
+
+- Confirmed low-level rebound: `ret_5 > 0`, `close > MA5`, `MA5 >= MA10`
+- MACD strengthening: `DIF > DEA` and `HIST > 0`
+- Volume match: `vol_ratio20` expands moderately (avoid rebounds on no volume)
+- Still bounded by `MA200/MA50` (to prevent blind bottom-fishing inside a long bear structure)
+
+---
+
+## 5. "Dead-Cat Bounce / Bull Trap" Defense (something you care about in particular)
+
+The scenario you mentioned:  
+**In a decline, a rising line is suddenly pulled up on abnormally large volume; it is likely retail picking up the bags, followed by further declines.**
+
+The risk criteria already built in (`trap_rebound`):
+
+- Background still weak: `MA20 < MA60` or `ret_20 < 0`
+- Short-term bounce: `ret_5 > 0`
+- Abnormal volume surge: `vol_ratio20 > 1.8`
+- MACD not strengthening: `HIST < 0` and `DIF < DEA`
+
+Handling:
+
+- Significant buy-score deduction (do not chase by default)
+- Higher sell urgency (existing holdings are reduced / stopped out first)
+
+---
+
+## 6. The "Short-Term Exception" Below MA200
+
+You stressed "normally we don't trade below MA200, but short-term is an exception".  
+The system already supports an exception channel (on by default):
 
 - `ret_5 >= 0.04`
-- `vol_ratio20` 在 `[1.2, 2.4]`
+- `vol_ratio20` within `[1.2, 2.4]`
 - `MACD: DIF > DEA`
 
-只有同时满足，才允许少量短线参与；否则直接过滤。
+Only when all are satisfied is a small short-term participation allowed; otherwise it is filtered out directly.
 
 ---
 
-## 7. 与当前策略模块的对应
+## 7. Mapping to Current Strategy Modules
 
-- `low_heat_quality_rebound`：
-  - 偏“防守中线 + 低位反弹”
-  - 加入 `trap_rebound`、`top_break_risk`、`MA200/MA50` 惩罚
-- `adaptive_regime_midterm`：
-  - 偏“市场状态切换”
-  - 在低位/高位回调子评分中都加入上述量价-MACD过滤
-
----
-
-## 8. 实战解释模板（给复盘用）
-
-当出现“长下影 + 放量 + 小反弹”时，先问三句：
-
-- 这是不是在 `MA200` 下方的弱势区？
-- MACD 是否真的转强（而不是弱反抽）？
-- 放量是“温和承接”还是“异常冲高回落”？
-
-若答案是：`弱势区 + MACD弱 + 异常放量`，则按诱多处理，避免接盘。
+- `low_heat_quality_rebound`:
+  - Leans toward "defensive mid-term + low-level rebound"
+  - Adds `trap_rebound`, `top_break_risk`, and `MA200/MA50` penalties
+- `adaptive_regime_midterm`:
+  - Leans toward "market regime switching"
+  - Adds the above price-volume-MACD filters in both the low-level and high-level pullback sub-scores
 
 ---
 
-## 9. 重要声明
+## 8. Practical Interpretation Template (for post-trade review)
 
-- 市场心理无法被“看透”，只能被“行为代理变量”逼近。
-- 形态永远不是单点信号，必须与趋势、量能、风险预算一起使用。
-- 本规则优先级低于资金安全铁律（总仓位、单笔风险、连亏暂停等）。
+When "long lower shadow + volume surge + small bounce" appears, first ask three questions:
+
+- Is this a weak zone below `MA200`?
+- Has MACD genuinely strengthened (rather than a weak bounce)?
+- Is the volume surge "moderate absorption" or an "abnormal spike and pullback"?
+
+If the answer is `weak zone + weak MACD + abnormal volume surge`, treat it as a bull trap and avoid taking the bag.
+
+---
+
+## 9. Important Disclaimer
+
+- Market psychology cannot be "seen through"; it can only be approximated by "behavioral proxy variables".
+- A chart pattern is never a single-point signal; it must be used together with trend, volume and risk budget.
+- These rules rank below the iron laws of capital safety (total position, per-trade risk, pause after consecutive losses, etc.).
 
 
 ---
 
-<a id="3-形态信号实例"></a>
+<a id="3-chart-pattern-signal-examples"></a>
 
-# 形态信号实例（A/B/C/D）与交易细则
+# Chart-Pattern Signal Examples (A/B/C/D) and Trading Details
 
-> 本文把示意图中的买卖点映射为系统内可执行信号，并补充“正常回调不急卖、异常冲顶先防守”的实盘细则。  
-> 关键词：趋势线、支撑/阻力、头肩（顶/底）、突破确认、量价与 MACD 共振。
+> This document maps the buy/sell points in the illustrations to executable in-system signals, and adds live-trading details such as "do not rush to sell on a normal pullback; defend first on an abnormal climax top".  
+> Keywords: trend line, support/resistance, head-and-shoulders (top/bottom), breakout confirmation, price-volume and MACD resonance.
 
-## 一、基础定义（先统一语言）
+## 1. Basic Definitions (unify the vocabulary first)
 
-- `support_20`：近 20 日动态支撑（滚动最低价）
-- `resistance_20`：近 20 日动态阻力（滚动最高价）
-- `support_break_down`：收盘跌破支撑（破位）
-- `resistance_break_up`：收盘突破阻力（上破）
-- `vol_ratio20`：当日成交量 / 20 日均量（放量强弱）
-- `macd_dif > macd_dea`：MACD 多头确认
-- `ma20 > ma60`：中短期趋势向上
+- `support_20`: 20-day dynamic support (rolling lowest price)
+- `resistance_20`: 20-day dynamic resistance (rolling highest price)
+- `support_break_down`: close breaks below support (support breakdown)
+- `resistance_break_up`: close breaks above resistance (upward breakout)
+- `vol_ratio20`: current trading volume / 20-day average volume (strength of volume expansion)
+- `macd_dif > macd_dea`: MACD bullish confirmation
+- `ma20 > ma60`: short/medium-term trend is up
 
-说明：支撑/阻力是动态滚动计算，不是手工画固定线。
+Note: support/resistance are computed dynamically on a rolling basis, not by hand-drawing fixed lines.
 
 ---
 
-## 二、A 图：升势中跌破支撑（卖点）
+## 2. Chart A: Support Breakdown in an Uptrend (sell point)
 
-### 图形含义
+### Meaning of the Pattern
 
-- 升势里多次震荡后，关键支撑失守，意味着原结构被破坏。
+- After several oscillations in an uptrend, key support is lost, meaning the original structure is broken.
 
-### 量化映射
+### Quantitative Mapping
 
 - `support_break_down = 1`
-- `uptrend_break_down = 1`（上行背景下破位）
-- 若 `vol_ratio20 > 1`（尤其 > 1.3）则视作“放量破位”，风险更高
+- `uptrend_break_down = 1` (breakdown against an uptrend background)
+- If `vol_ratio20 > 1` (especially > 1.3), treat it as a "breakdown on heavy volume", which carries higher risk
 
-### 交易动作
+### Trading Actions
 
-- 买入分显著扣分
-- 卖出分提高，触发减仓/清仓优先级上升
-- 若同时出现异常冲顶反转（见第六节），则直接偏防守
-
----
-
-## 三、B 图：升势后头肩顶 + 颈线破位（卖点）
-
-### 图形含义
-
-- 本质是“冲高失败次数增加 + 关键颈线（支撑）跌破”。
-- 市场心理从“逢回调买入”转为“反弹即卖出”。
-
-### 量化映射（代理，不做手工几何识别）
-
-- `top_break_risk = 1`（顶部失败风险）
-- 常伴随 `support_break_down = 1`
-- 若上影线偏长、放量冲高回落，会进一步抬升卖出紧迫度
-
-### 交易动作
-
-- 买入强惩罚
-- 卖出加速（与止损、移动止损叠加）
+- Significant buy-score deduction
+- Sell score rises, and the priority of reducing/closing positions goes up
+- If an abnormal climax-top reversal appears at the same time (see Section 6), lean directly toward defense
 
 ---
 
-## 四、C 图：下跌后突破阻力（买点）
+## 3. Chart B: Head-and-Shoulders Top After an Uptrend + Neckline Breakdown (sell point)
 
-### 图形含义
+### Meaning of the Pattern
 
-- 下跌结构后，首次有效突破阻力，常对应趋势反转起点。
+- In essence: "an increasing number of failed pushes higher + the key neckline (support) is broken".
+- Market psychology shifts from "buy the dip" to "sell the rally".
 
-### 量化映射
+### Quantitative Mapping (proxies; no manual geometric recognition)
+
+- `top_break_risk = 1` (top-failure risk)
+- Often accompanied by `support_break_down = 1`
+- If the upper shadow is long, or there is a spike and pullback on heavy volume, sell urgency rises further
+
+### Trading Actions
+
+- Strong buy penalty
+- Faster selling (stacks with stop-loss and trailing stop-loss)
+
+---
+
+## 4. Chart C: Breakout Above Resistance After a Decline (buy point)
+
+### Meaning of the Pattern
+
+- After a downtrend structure, the first valid breakout above resistance often marks the start of a trend reversal.
+
+### Quantitative Mapping
 
 - `downtrend_break_up = 1`
-- “多次探底后突破”时 `inverse_top_break_signal = 1`
-- `macd_dif > macd_dea` 且量能不过热（常见 0.9~1.8 倍）时，买入可信度更高
+- For a "breakout after multiple bottom tests", `inverse_top_break_signal = 1`
+- When `macd_dif > macd_dea` and volume is not overheated (commonly 0.9~1.8x), buy credibility is higher
 
-### 交易动作
+### Trading Actions
 
-- 提高买入分
-- 仍受主趋势约束（如 MA200 与风控门槛）
-
----
-
-## 五、D 图：加仓-卖出-再买入节奏（避免频繁反复）
-
-### 图形含义
-
-- 趋势不是直线，通常表现为“推进-回撤-再推进”。
-- 好策略不是每个波动都交易，而是“结构确认后再动手”。
-
-### 量化映射
-
-- `resistance_break_up` + 趋势健康 -> 允许加仓/持有
-- `support_break_down` / `top_break_risk` -> 偏卖出
-- 回调后再突破 -> 再次触发买点（二次入场）
-
-### 交易动作
-
-- 采用评分聚合而非单信号一刀切，减少噪声交易
-- 配合 `entry_interval_days`、`min_hold_days` 控制交易节奏
+- Raise the buy score
+- Still bounded by the main trend (e.g. MA200 and risk-control gates)
 
 ---
 
-## 六、关键补充：防止“过早出手/过早出局”
+## 5. Chart D: Rhythm of Adding, Selling, and Re-Buying (avoid frequent flip-flopping)
 
-这是实盘里最容易拉低收益的环节，系统已实现两类互补信号：
+### Meaning of the Pattern
 
-### 1) `normal_pullback_signal`：正常回调，不急着卖
+- A trend is not a straight line; it typically shows "advance - pullback - advance again".
+- A good strategy does not trade every fluctuation, but "acts after the structure is confirmed".
 
-#### 判定意图
+### Quantitative Mapping
 
-- 目标是识别“上升趋势中的健康回撤”，避免把正常洗盘误判为反转。
+- `resistance_break_up` + healthy trend -> allow adding / holding
+- `support_break_down` / `top_break_risk` -> lean toward selling
+- Breakout again after a pullback -> triggers the buy point again (second entry)
 
-#### 典型条件（逻辑）
+### Trading Actions
 
-- 前置上升动量存在（例如 20 日涨幅、均线关系仍健康）
-- 距近期高点有回撤，但幅度在“可接受区间”
-- 回撤阶段不是放量恐慌（量能不失控）
-- 下跌量弱于上涨量（抛压可控）
-
-#### 交易动作
-
-- 若仅因卖分触发卖出，但同时命中 `normal_pullback_signal`，则暂缓卖出
-- 目的：延长趋势单持有时间，减少“被甩下车”
-
-### 2) `abnormal_climax_reversal`：异常冲顶反转，提前防守
-
-#### 判定意图
-
-- 识别“短期过热冲顶 + 转弱确认”，防止利润快速回吐。
-
-#### 典型条件（逻辑）
-
-- 短期快速拉升 + 明显放量（过热）
-- 出现冲高回落形态（如上影线风险）
-- 随后出现转弱跌幅确认
-
-#### 交易动作
-
-- 直接提高卖出优先级（可覆盖“继续持有”逻辑）
-- 目的：在顶部风险扩大前先收缩风险
-
-### 二者关系（最重要）
-
-- `normal_pullback_signal` 负责“别太早卖”
-- `abnormal_climax_reversal` 负责“别太晚卖”
-- 两者配合，核心就是：**趋势里耐心持有，异常时果断防守**
+- Use score aggregation rather than an all-or-nothing single signal, to reduce noise trading
+- Combine with `entry_interval_days` and `min_hold_days` to control trading cadence
 
 ---
 
-## 七、从图形直觉到系统执行的顺序
+## 6. Key Supplement: Prevent "Acting Too Early / Exiting Too Early"
 
-1. 先看长期/中期结构（`MA200`、`MA50`、`MA20/MA60`）
-2. 再看形态确认（支撑/阻力破位、顶部/底部风险代理）
-3. 最后看量能 + MACD（真假突破过滤）
-4. 用 `normal_pullback_signal` 与 `abnormal_climax_reversal` 控制“卖点早晚”
+This is the part of live trading that most easily drags down returns; the system implements two complementary signals:
 
-这样就把“图形经验”转成了可回测、可复盘、可解释的规则系统。
+### 1) `normal_pullback_signal`: Normal Pullback, Do Not Rush to Sell
+
+#### Intent of the Determination
+
+- The goal is to identify "healthy pullbacks within an uptrend", so that a normal shakeout is not misread as a reversal.
+
+#### Typical Conditions (logic)
+
+- Prior upward momentum exists (e.g. 20-day gain, moving-average relationships still healthy)
+- There is a drawdown from the recent high, but the magnitude is within an "acceptable range"
+- The pullback phase is not a volume-driven panic (volume does not run out of control)
+- Down-day volume is weaker than up-day volume (selling pressure is controlled)
+
+#### Trading Actions
+
+- If a sell is triggered only by the sell score, but `normal_pullback_signal` is hit at the same time, postpone the sell
+- Purpose: extend the holding time of trend positions and reduce "getting shaken off the train"
+
+### 2) `abnormal_climax_reversal`: Abnormal Climax-Top Reversal, Defend Early
+
+#### Intent of the Determination
+
+- Identify "short-term overheated climax top + confirmation of weakening", to prevent profits from being given back quickly.
+
+#### Typical Conditions (logic)
+
+- A rapid short-term rally + clearly heavy volume (overheating)
+- A spike-and-pullback shape appears (e.g. upper-shadow risk)
+- A subsequent decline confirms the weakening
+
+#### Trading Actions
+
+- Directly raise sell priority (can override the "keep holding" logic)
+- Purpose: shrink risk before top risk expands
+
+### Relationship Between the Two (most important)
+
+- `normal_pullback_signal` is responsible for "don't sell too early"
+- `abnormal_climax_reversal` is responsible for "don't sell too late"
+- Together, the core is: **hold patiently within a trend; defend decisively when something abnormal happens**
+
+---
+
+## 7. Order of Operations From Chart Intuition to System Execution
+
+1. First look at the long/medium-term structure (`MA200`, `MA50`, `MA20/MA60`)
+2. Then look at pattern confirmation (support/resistance breakdowns, top/bottom risk proxies)
+3. Finally look at volume + MACD (filter true vs. false breakouts)
+4. Use `normal_pullback_signal` and `abnormal_climax_reversal` to control "how early or late to sell"
+
+This turns "chart experience" into a rule system that is backtestable, reviewable and explainable.
 
 
 ---
 
-<a id="4-策略流派综述"></a>
+<a id="4-strategy-schools-survey"></a>
 
-# 策略流派综述与集成决策
+# Strategy Schools Survey and Integration Decisions
 
-> 本文档评估三类常见 A 股散户/私募流派——**多因子（截面）、海龟（趋势突破）、缠论（结构技术面）**——在本仓库中是否应该集成、以及集成的优先级。
+> This document evaluates three common A-share retail/private-fund schools — **multi-factor (cross-sectional), Turtle (trend breakout), and Chan Theory (structural technical analysis)** — on whether they should be integrated into this repo, and in what priority.
 >
-> **重要声明**：本文只是决策与评估记录。截至撰写日，仓库中**只有多因子/截面类实现**（`csi1000_enhanced`、`simple_3factor`、`jq_multifactor_clone`、`value_activity_dow`、`dow_trend`、`adaptive_regime_midterm`、`low_heat_quality_rebound`、`price_only_cross_section`）。海龟和缠论**尚未实现**。任何时候，文档必须与事实、实现对齐。
+> **Important disclaimer**: this document is only a record of decisions and evaluations. As of writing, the repo has **only multi-factor/cross-sectional implementations** (`csi1000_enhanced`, `simple_3factor`, `jq_multifactor_clone`, `value_activity_dow`, `dow_trend`, `adaptive_regime_midterm`, `low_heat_quality_rebound`, `price_only_cross_section`). Turtle and Chan Theory are **not yet implemented**. At all times, the docs must stay aligned with facts and implementation.
 
 ---
 
-## 一、三大流派速览
+## 1. The Three Schools at a Glance
 
-### 1) 多因子 / 截面（Cross-Section Multi-Factor）
+### 1) Multi-Factor / Cross-Sectional
 
-- **核心逻辑**：同一时点，把所有股票按“动量 + 价值 + 质量 + 低波 + 情绪”等因子打分，取 top-N 持有，周期换仓。
-- **代表实现**：本仓库主线；聚宽社区 60%+ 分享策略都是这一类。
-- **仓库位置**：
-  - `quant/stock_strategy/csi1000_enhanced.py`（5 因子：value + quality + mom20 + mom60 + low_vol）
-  - `quant/stock_strategy/simple_3factor.py`（3 因子基线）
-  - `quant/stock_strategy/jq_multifactor_clone.py`（聚宽多因子样例的本地克隆）
-- **优点**：可解释、可回测、可优化、可并行；样本外表现相对稳定。
-- **风险**：拥挤赛道，Alpha 持续衰减；需要 walk-forward 定期验证。
+- **Core logic**: at the same point in time, score all stocks on factors such as "momentum + value + quality + low volatility + sentiment", hold the top N, and rebalance periodically.
+- **Representative implementation**: this repo's main line; over 60% of the strategies shared in the JoinQuant community are of this kind.
+- **Location in the repo**:
+  - `quant/stock_strategy/csi1000_enhanced.py` (5 factors: value + quality + mom20 + mom60 + low_vol)
+  - `quant/stock_strategy/simple_3factor.py` (3-factor baseline)
+  - `quant/stock_strategy/jq_multifactor_clone.py` (local clone of the JoinQuant multi-factor sample)
+- **Pros**: explainable, backtestable, optimizable, parallelizable; relatively stable out-of-sample performance.
+- **Risks**: a crowded space with continuously decaying alpha; needs periodic walk-forward validation.
 
-### 2) 海龟交易法则（Turtle / Donchian Breakout）
+### 2) Turtle Trading Rules (Turtle / Donchian Breakout)
 
-- **核心逻辑**：唐奇安通道 20/55 日突破入场；ATR 计算波动率单位（N 值）；金字塔式加仓（每上涨 0.5N 加一笔，最多 4 笔）；2N 或 10 日反向通道止损。
-- **仓库位置**：**未实现**。搜索 `turtle` / `donchian` / `ATR` 均无匹配。`dow_trend.py` **不是海龟**，它只是简单的均线排列打分。
-- **优点**：逻辑极其简单；趋势市场收益可观；有几十年历史检验；参数很少所以过拟合空间小。
-- **风险**：
-  - 震荡市连续假突破，回撤大；
-  - A 股小盘上涨停板/跌停板会让突破难以捕捉；
-  - 加仓机制在小账户上手数不好凑（100 股为一手）；
-  - 通道突破本质上是"追高"，与本仓库现有的 `anti_fomo_filter_enable` 逻辑冲突。
+- **Core logic**: enter on a 20/55-day Donchian channel breakout; ATR sets the volatility unit (the N value); pyramid adds (add one unit for every 0.5N up, at most 4 units); stop-loss at 2N or on a 10-day reverse channel.
+- **Location in the repo**: **not implemented**. Searching for `turtle` / `donchian` / `ATR` finds no matches. `dow_trend.py` is **not Turtle**; it is just a simple moving-average alignment score.
+- **Pros**: extremely simple logic; solid returns in trending markets; decades of historical validation; few parameters so little room for overfitting.
+- **Risks**:
+  - Consecutive false breakouts in choppy markets lead to large drawdowns;
+  - Limit-up/limit-down boards on A-share small caps make breakouts hard to capture;
+  - The add-on mechanism is hard to size on a small account (100 shares per lot);
+  - Channel breakout is essentially "chasing highs", which conflicts with the repo's existing `anti_fomo_filter_enable` logic.
 
-### 3) 缠论（Chan Theory）
+### 3) Chan Theory
 
-- **核心逻辑**：分型 → 笔 → 线段 → 中枢 → 三类买卖点。以形态学识别市场结构。
-- **仓库位置**：**未实现**。搜索 `缠论` / `中枢` / `分型` 均无匹配。
-- **优点**：在震荡市中枢突破时识别度较高；有一批固定粉丝群体。
-- **风险**：
-  - 定义精细但主观参数多（例如"分型强度阈值"、"中枢重叠比例"），量化实现容易过拟合；
-  - 不同流派实现差异极大，社区代码质量参差；
-  - 与 ADR-3（每个策略 ≤ 3 个核心因子）矛盾——缠论需要多层嵌套判定，可解释性看起来强但实际很脆；
-  - 主要在日内/小时级发挥，与本仓库的日频决策节奏不吻合；
-  - 在 A 股实证研究里缺少可复现的统计证据。
+- **Core logic**: fractal → stroke → segment → central pivot zone → three classes of buy/sell points. It identifies market structure through pattern analysis.
+- **Location in the repo**: **not implemented**. Searching for `缠论` ("Chan Theory") / `中枢` ("central pivot zone") / `分型` ("fractal") finds no matches.
+- **Pros**: fairly recognizable on central-zone breakouts in choppy markets; has a loyal following.
+- **Risks**:
+  - Definitions are fine-grained but have many subjective parameters (e.g. "fractal strength threshold", "central-zone overlap ratio"), so quantitative implementations overfit easily;
+  - Implementations differ enormously between schools, and community code quality is uneven;
+  - Conflicts with ADR-3 (≤ 3 core factors per strategy) — Chan Theory needs multi-layer nested determinations, which look highly explainable but are actually very brittle;
+  - Works mainly at intraday/hourly level, which does not match this repo's daily decision cadence;
+  - Lacks reproducible statistical evidence in A-share empirical research.
 
 ---
 
-## 二、决策矩阵
+## 2. Decision Matrix
 
-| 维度 | 多因子 | 海龟 | 缠论 |
+| Dimension | Multi-factor | Turtle | Chan Theory |
 |------|--------|------|------|
-| 与 ADR-3 兼容（≤3 因子、可解释） | ✅ 天然满足 | ✅ 参数极少 | ❌ 参数多且主观 |
-| 与现有引擎兼容（截面打分） | ✅ 直接兼容 | ⚠️ 需要"信号型"接入 | ⚠️ 结构不匹配 |
-| 与现有风控/反追高兼容 | ✅ | ⚠️ 追高本质，需要放宽 `anti_fomo` | ✅ |
-| 与聚宽数据兼容 | ✅ | ✅ 日线足够 | ✅ 日线足够 |
-| 与 A 股小盘适配 | ✅ 主战场 | ⚠️ 涨跌停干扰 | ⚠️ 需要分钟数据 |
-| 集成工作量（人日估计） | 已有 | 3-5 天 | 15-30 天 |
-| 上线通过率（walk-forward 我方经验） | 中等 | 中偏低 | 未知 |
+| Compatible with ADR-3 (≤3 factors, explainable) | ✅ Satisfied by design | ✅ Very few parameters | ❌ Many subjective parameters |
+| Compatible with the existing engine (cross-sectional scoring) | ✅ Directly compatible | ⚠️ Needs a "signal-type" integration | ⚠️ Structural mismatch |
+| Compatible with existing risk control / anti-chasing | ✅ | ⚠️ Chasing highs by nature; `anti_fomo` must be relaxed | ✅ |
+| Compatible with JoinQuant data | ✅ | ✅ Daily bars suffice | ✅ Daily bars suffice |
+| Fit for A-share small caps | ✅ Main battlefield | ⚠️ Limit-up/limit-down interference | ⚠️ Needs minute data |
+| Integration effort (person-day estimate) | Already exists | 3-5 days | 15-30 days |
+| Go-live pass rate (walk-forward, our experience) | Medium | Medium-low | Unknown |
 
-## 三、集成决策
+## 3. Integration Decisions
 
-### 主线：多因子 / 截面（继续深化，不动结构）
+### Main Line: Multi-Factor / Cross-Sectional (keep deepening, don't change the structure)
 
-- 保持 `csi1000_enhanced` 为冻结生产版。
-- 继续用 `walk_forward` + `factor_analyze` 做定期健康检查。
-- 因子衰减时，先靠 `online_learning.py`（EGD）做慢速权重微调；实在不行再降级为 `simple_3factor`（更少因子、更少过拟合）。
+- Keep `csi1000_enhanced` as the frozen production version.
+- Keep using `walk_forward` + `factor_analyze` for periodic health checks.
+- When factors decay, first use `online_learning.py` (EGD) for slow weight fine-tuning; if that is not enough, downgrade to `simple_3factor` (fewer factors, less overfitting).
 
-### 次线（建议试点）：海龟 / 通道突破
+### Secondary Line (pilot recommended): Turtle / Channel Breakout
 
-- **优先级**：中低（不影响冻结版；作为多策略池的另一条腿）。
-- **实施计划**：
-  1. 新增 `quant/stock_strategy/turtle_breakout.py`：
-     - 入场：20 日唐奇安上轨突破 + 量能确认（`vol_ratio20 >= 1.2`）
-     - 加仓：每上涨 0.5 × ATR20 加一次，最多 3 次
-     - 止损：2 × ATR20 或跌破 10 日唐奇安下轨，取先触发
-     - 止盈：跌破 10 日唐奇安下轨
-  2. 在 `registry.py` 里注册；参数走 `config/*.toml` 的 `[strategy]` 段。
-  3. 用小仓位跑一遍 walk-forward（`main.py --mode walk-forward`），三段窗口都要正超额才允许进 ensemble。
-  4. 用 20-30% 的仓位与主策略做等权 ensemble，观测半年。
-- **中止条件**：连续 6 个月夏普 < 0.3 或最大回撤 > 主策略 1.5 倍，直接退役。
-- **不做的事**：不为海龟单独接一个新的引擎架构。它必须适配现有的 `buy_scores` / `sell_scores` 接口，即使需要一些桥接代码。
+- **Priority**: medium-low (does not affect the frozen version; serves as another leg of the multi-strategy pool).
+- **Implementation plan**:
+  1. Add `quant/stock_strategy/turtle_breakout.py`:
+     - Entry: break above the 20-day Donchian upper band + volume confirmation (`vol_ratio20 >= 1.2`)
+     - Add-ons: add once for every 0.5 × ATR20 up, at most 3 times
+     - Stop-loss: 2 × ATR20 or a break below the 10-day Donchian lower band, whichever triggers first
+     - Take-profit: break below the 10-day Donchian lower band
+  2. Register it in `registry.py`; parameters go in the `[strategy]` section of `config/*.toml`.
+  3. Run walk-forward with small positions (`main.py --mode walk-forward`); all three windows must show positive excess return before it may enter the ensemble.
+  4. Run an equal-weight ensemble with the main strategy using 20-30% of the position, and observe for half a year.
+- **Termination condition**: Sharpe ratio < 0.3 for 6 consecutive months, or maximum drawdown > 1.5x the main strategy's, then retire directly.
+- **What not to do**: do not hook up a separate new engine architecture just for Turtle. It must adapt to the existing `buy_scores` / `sell_scores` interface, even if some bridging code is needed.
 
-### 暂缓：缠论
+### Deferred: Chan Theory
 
-- **优先级**：低（当前**不集成**）。
-- **理由**：
-  - 与 ADR-3 冲突严重（多层规则、参数依赖强）。
-  - 需要分钟数据来体现优势，与本仓库日频节奏不匹配。
-  - 社区量化实现质量参差，无可复现的 A 股实证证据。
-- **重新评估条件**（三条同时满足才重开）：
-  - 官方或权威学术论文给出可复现的 A 股缠论回测；
-  - 我们的分钟数据管道已成熟并落地一年以上；
-  - 有明确研究人力愿意投入 ≥ 4 周做完整实现 + walk-forward 验证。
-- **在此之前**：如果对缠论好奇，先在 `test/` 目录做纯研究脚本，**不进入 `quant/stock_strategy/` 主链路**。
-
----
-
-## 四、任何新流派进入生产的通用门槛
-
-1. **代码**：必须实现 `buy_scores(ctx)` / `sell_scores(ctx)` 接口，注册到 `registry.py`。
-2. **回测**：`main.py --mode backtest` 能跑通，产出与主策略一致的 metrics 结构。
-3. **验证**：`main.py --mode walk-forward` 三段窗口至少两段正超额；最差窗口回撤不超过主策略 1.3 倍。
-4. **纸盘**：至少一周 `broker_type = "paper"` 稳定运行。
-5. **文档**：在本目录新增一份 `05_XXX.md`，写清楚流派逻辑、参数含义、验证结果、退役条件。
-6. **风控**：完全服从 `10_foundation/03_risk_rulebook.md`，不能自建风控绕过既有限制。
+- **Priority**: low (**not integrated** for now).
+- **Reasons**:
+  - Serious conflict with ADR-3 (multi-layer rules, strong parameter dependence).
+  - Needs minute data to show its edge, which does not match this repo's daily cadence.
+  - Community quant implementations vary in quality, and there is no reproducible A-share empirical evidence.
+- **Re-evaluation conditions** (reopen only when all three are met):
+  - An official or authoritative academic paper provides a reproducible A-share Chan Theory backtest;
+  - Our minute-data pipeline is mature and has been in production for over a year;
+  - There is clear research headcount willing to invest ≥ 4 weeks for a full implementation + walk-forward validation.
+- **Until then**: if you are curious about Chan Theory, write pure research scripts in the `test/` directory first, **and do not enter the `quant/stock_strategy/` main path**.
 
 ---
 
-## 五、更新历史
+## 4. General Gates for Any New School to Enter Production
 
-- 初版：记录三大流派对比与集成决策。当前仓库只有多因子/截面实现。海龟计划加入（次线），缠论暂缓。
+1. **Code**: must implement the `buy_scores(ctx)` / `sell_scores(ctx)` interface and register in `registry.py`.
+2. **Backtest**: `main.py --mode backtest` runs through and produces the same metrics structure as the main strategy.
+3. **Validation**: `main.py --mode walk-forward` shows positive excess return in at least two of the three windows; the worst-window drawdown does not exceed 1.3x the main strategy's.
+4. **Paper trading**: at least one week of stable `broker_type = "paper"` operation.
+5. **Docs**: add a `05_XXX.md` in this directory, clearly documenting the school's logic, parameter meanings, validation results, and retirement conditions.
+6. **Risk control**: fully obey `10_foundation/03_risk_rulebook.md`; do not build your own risk control that bypasses existing limits.
+
+---
+
+## 5. Update History
+
+- First version: recorded the comparison of the three schools and the integration decisions. The repo currently has only multi-factor/cross-sectional implementations. Turtle is planned to be added (secondary line); Chan Theory is deferred.

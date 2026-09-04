@@ -1,12 +1,12 @@
-"""Quant Hermes plugin — 注册 5 工具 + 4 skill。
+"""Quant Hermes plugin: registers 5 tools + 4 skills.
 
-**这个模块运行在 hermes-agent 的 Python venv 里**（用户跑 `hermes profile quant` 后是
-`~/.hermes/profiles/quant/` 的 hermes runtime）。**禁止 import quant.\*** —— 那些包在主
-quant venv（Py 3.12）里，本 venv（Py 3.11）拿不到。
+**This module runs inside the hermes-agent Python venv** (the hermes runtime of
+`~/.hermes/profiles/quant/` after the user runs `hermes profile quant`). **Never import quant.\*** --
+those packages live in the main quant venv (Py 3.12) and are not reachable from this venv (Py 3.11).
 
-工具真实逻辑在主仓库 `quant.ml.hermes.rpc` 里；本模块通过 subprocess `uv run python -m
-quant.ml.hermes.rpc <cmd> <json_args>` 反向调回主 venv。QUANT_REPO_PATH 环境变量指向
-主仓库根，写在 profile 的 `.env` 里。
+The real tool logic lives in `quant.ml.hermes.rpc` in the main repo; this module calls back into the
+main venv via the subprocess `uv run python -m quant.ml.hermes.rpc <cmd> <json_args>`. The
+QUANT_REPO_PATH environment variable points at the main repo root and is written to the profile's `.env`.
 """
 
 from __future__ import annotations

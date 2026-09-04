@@ -226,7 +226,7 @@ def run_nlp_analyze_app(
     """Run the LLM (DeepSeek) announcement pipeline: JSONL → SQLite structured signals.
 
     This is a **single-shot structured extraction**. For multi-step agent workflows
-    (查行情 + 查公告 + 判断) see `--mode hermes-chat`.
+    (look up quotes + look up announcements + make a judgment) see `--mode hermes-chat`.
     """
     from quant.ml.llm.announcement_pipeline import run_batch
 
@@ -255,18 +255,18 @@ def run_hermes_chat_app(
     """Talk to hermes-agent via `hermes -z` CLI, scoped to a profile.
 
     Two usage modes:
-    1. Free-form:   --prompt "..."   (skill 参数留空)
+    1. Free-form:   --prompt "..."   (leave the skill argument empty)
     2. Skill-first: --skill analyst_zoe --code 000001.XSHE --date 2025-08-01
 
-    Profile 隔离：默认走 profile "quant"（`bash hermes_plugin/setup.sh` 创建），
-    不动你已有的默认 profile。可通过 `--profile` 换目标 profile。
+    Profile isolation: the default profile is "quant" (created by `bash hermes_plugin/setup.sh`),
+    and your existing default profile is left untouched. Use `--profile` to target another profile.
     """
     from quant.ml.hermes import runner
 
     if skill:
         extra_prompt = prompt.strip() if prompt else None
         if codes and not code:
-            extra_prompt = ((extra_prompt + "\n") if extra_prompt else "") + f"股票池：{codes}"
+            extra_prompt = ((extra_prompt + "\n") if extra_prompt else "") + f"Stock universe: {codes}"
         result = runner.run_skill(
             skill=skill,
             code=code,

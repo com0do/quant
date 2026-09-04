@@ -1,72 +1,72 @@
-# 五、实盘流水线与网关
+# Part 5: Live Trading Pipeline and Gateway
 
-> 本篇合并了 6 份实盘/网关文档：实盘自动化流水线、QMT 网关协议、xtquant 网关 V2 设计、部署分离、xtdata 同步策略、QKA 生产化清单。
-> 准备接实盘或做运维时读。
+> This part merges six live-trading/gateway documents: the live-trading automation pipeline, the QMT gateway protocol, the xtquant gateway V2 design, deployment separation, the xtdata sync strategy, and the QKA production-readiness checklist.
+> Read this when preparing to go live or doing operations.
 
-## 目录
+## Table of Contents
 
-- [1. 实盘自动化流水线](#1-实盘自动化流水线)
-- [2. QMT 网关协议](#2-qmt-网关协议)
-- [3. xtquant_gateway V2 设计](#3-xtquant-gateway-v2-设计)
-- [4. 网关部署分离](#4-网关部署分离)
-- [5. xtdata 最小必要同步策略](#5-xtdata-最小必要同步策略)
-- [6. QKA 网关生产化清单](#6-qka-网关生产化清单)
+- [1. Live Trading Automation Pipeline](#1-live-trading-automation-pipeline)
+- [2. QMT Gateway Protocol](#2-qmt-gateway-protocol)
+- [3. xtquant_gateway V2 Design](#3-xtquant-gateway-v2-design)
+- [4. Gateway Deployment Separation](#4-gateway-deployment-separation)
+- [5. xtdata Minimal Necessary Sync Strategy](#5-xtdata-minimal-necessary-sync-strategy)
+- [6. QKA Gateway Production-Readiness Checklist](#6-qka-gateway-production-readiness-checklist)
 
 ---
 
-<a id="1-实盘自动化流水线"></a>
-# 实盘自动化流水线（单一执行源）
+<a id="1-live-trading-automation-pipeline"></a>
+# Live Trading Automation Pipeline (Single Execution Source)
 
-这条流水线的目的是：让实盘策略不直接读取零散的 `output/*` 文件，而是围绕一份统一的“当日执行计划”流转。
+The purpose of this pipeline: instead of reading scattered `output/*` files directly, the live strategy works around one unified "daily execution plan".
 
-## 目标
+## Goals
 
-- 把盘前准备与盘中执行串成一条连贯的流。
-- 每天只保留一份执行快照（`execution_plan`）作为交接产物。
+- Chain pre-market preparation and intraday execution into one coherent flow.
+- Keep only one execution snapshot per day (`execution_plan`) as the handoff artifact.
 
-## 主流程
+## Main Flow
 
-1. 盘前同步（可选）：`jq-bulk-sync`
-2. 盘前回测（使用当前配置）
-3. 盘前扫描，构建当日观察池
-4. 写入 `data/runtime/live_execution_plan.json`
-5. 启动实盘守护，消费该计划中的观察池
+1. Pre-market sync (optional): `jq-bulk-sync`
+2. Pre-market backtest (using the current config)
+3. Pre-market scan, building the day's watchlist
+4. Write `data/runtime/live_execution_plan.json`
+5. Start the live daemon, which consumes the watchlist in that plan
 
-## 入口命令
+## Entry Commands
 
 ```bash
 uv run python main.py --mode live-auto --config config/live_qmt_http.toml
 ```
 
-只做盘前准备（推荐做成盘前定时任务）：
+Pre-market preparation only (recommended as a scheduled pre-market job):
 
 ```bash
 uv run python main.py --mode prepare-live-plan --config config/live_qmt_http.toml
 ```
 
-可用环境变量：
+Available environment variables:
 
-- `LIVE_AUTO_SYNC_BEFORE_OPEN=0|1`（默认 `1`）
-- `LIVE_AUTO_MAX_LOOPS=<int>`（不填表示持续运行）
+- `LIVE_AUTO_SYNC_BEFORE_OPEN=0|1` (default `1`)
+- `LIVE_AUTO_MAX_LOOPS=<int>` (leave unset to run continuously)
 
-## 为什么优于直接读 `output/`
+## Why This Beats Reading `output/` Directly
 
-- `output/` 里堆着各种分析产物，容易误引用。
-- 执行交接使用一份明确 schema 的文件（`execution_plan`），包含：
-  - 生成时间与来源配置
-  - 盘前回测指标
-  - 策略快照
-  - 当日观察池
+- `output/` is full of assorted analysis artifacts, so it is easy to reference the wrong one.
+- The execution handoff uses a file with a well-defined schema (`execution_plan`), containing:
+  - Generation time and source config
+  - Pre-market backtest metrics
+  - Strategy snapshot
+  - The day's watchlist
 
-## 每日脚本
+## Daily Script
 
-用一个脚本编排盘前动作：
+Orchestrate the pre-market actions with a single script:
 
 ```bash
 bash scripts/run_daily_live_pipeline.sh
 ```
 
-常用环境变量：
+Common environment variables:
 
 - `RUN_SYNC_BEFORE_OPEN=1|0`
 - `RUN_GATEWAY_ACCEPTANCE=1|0`
@@ -76,172 +76,172 @@ bash scripts/run_daily_live_pipeline.sh
 
 ---
 
-<a id="2-qmt-网关协议"></a>
+<a id="2-qmt-gateway-protocol"></a>
 
-# QMT 网关协议（Linux ↔ Windows）
+# QMT Gateway Protocol (Linux ↔ Windows)
 
-本项目已支持 `live-daemon` 使用 `qmt_http` broker 模式。
+This project already supports the `qmt_http` broker mode for `live-daemon`.
 
-## 目的
+## Purpose
 
-- Linux 侧负责策略、信号、风控、调度。
-- Windows 侧运行 miniQMT + xtquant + 网关服务。
-- Linux 通过 HTTP 调用网关来查账户/持仓、提交/撤销订单。
+- The Linux side handles strategy, signals, risk control, and scheduling.
+- The Windows side runs miniQMT + xtquant + the gateway service.
+- Linux calls the gateway over HTTP to query account/holdings and to submit/cancel orders.
 
-## 配置项
+## Configuration
 
-在 `config/*.toml` 里：
+In `config/*.toml`:
 
-- 通用网关段（`stock_data` 和 `execution` 均会读取）：
+- General gateway section (read by both `stock_data` and `execution`):
   - `[gateway] base_url / token / timeout_sec / account_id`
-- 交易路由：
+- Trading route:
   - `[daemon] broker_type = "qmt_http"`
-- 行情路由：
-  - `[data] realtime_quote_source = "qmt_http"`（fallback 仍然是日频收盘价）
+- Market-data route:
+  - `[data] realtime_quote_source = "qmt_http"` (the fallback is still the daily close price)
 
-参考文件：`config/live_qmt_http.toml`
+Reference file: `config/live_qmt_http.toml`
 
-## 必需端点
+## Required Endpoints
 
-网关需要提供如下 JSON API：
+The gateway must provide the following JSON APIs:
 
 1. `POST /account`
-   - 请求：`{ "account_id": "..." }`（可选）
-   - 响应：`{ "data": { "cash": 0.0, "equity": 0.0, ... } }` 或原始 dict
+   - Request: `{ "account_id": "..." }` (optional)
+   - Response: `{ "data": { "cash": 0.0, "equity": 0.0, ... } }` or a raw dict
 
 2. `POST /positions`
-   - 请求：`{ "account_id": "..." }`（可选）
-   - 响应：
-     - `{ "data": { "000001.SZ": 1000, ... } }`，或
+   - Request: `{ "account_id": "..." }` (optional)
+   - Response:
+     - `{ "data": { "000001.SZ": 1000, ... } }`, or
      - `{ "data": [ { "code": "000001.SZ", "quantity": 1000 }, ... ] }`
 
 3. `POST /order`
-   - 请求：
-     - `account_id`（可选）
-     - `code`（`000001.SZ` / `600000.SH`）
-     - `side`（`buy` / `sell`）
-     - `quantity`（int）
-     - `price`（float / null）
-   - 响应：`{ "data": { "order_id": "...", "status": "new|filled|..." } }`
+   - Request:
+     - `account_id` (optional)
+     - `code` (`000001.SZ` / `600000.SH`)
+     - `side` (`buy` / `sell`)
+     - `quantity` (int)
+     - `price` (float / null)
+   - Response: `{ "data": { "order_id": "...", "status": "new|filled|..." } }`
 
 4. `POST /cancel`
-   - 请求：`{ "account_id": "...", "order_id": "..." }`（`account_id` 可选）
-   - 响应：`{ "data": { "ok": true } }` 或 `{ "ok": true }`
+   - Request: `{ "account_id": "...", "order_id": "..." }` (`account_id` is optional)
+   - Response: `{ "data": { "ok": true } }` or `{ "ok": true }`
 
 5. `POST /order/status`
-   - 请求：`{ "account_id": "...", "order_id": "..." }`（`account_id` 可选）
-   - 响应：`{ "data": { "order_id": "...", "status": "...", ... } }`
+   - Request: `{ "account_id": "...", "order_id": "..." }` (`account_id` is optional)
+   - Response: `{ "data": { "order_id": "...", "status": "...", ... } }`
 
-## 可选端点
+## Optional Endpoints
 
-客户端 helper 里已经实现，方便监控：
+Already implemented in the client helper, for monitoring convenience:
 
-- `POST /quote`（`get_quote`）
-- `POST /fills`（`get_fills`）
+- `POST /quote` (`get_quote`)
+- `POST /fills` (`get_fills`)
 
-## XtQuant 接口映射
+## XtQuant Interface Mapping
 
-网关内部（Windows 侧）推荐这样映射：
+Recommended mapping inside the gateway (Windows side):
 
-- `xtquant.xtdata`（行情）
-  - 快照/查询：`get_full_tick`、`get_market_data`、`get_market_data_ex`、`get_local_data`
-  - 订阅：`subscribe_quote`、`subscribe_whole_quote`、`unsubscribe_quote`
-- `xtquant.xttrader`（交易）
-  - 下单：`order_stock`、`order_stock_async`
-  - 撤单：`cancel_order_stock`
-  - 查询：`query_stock_asset`、`query_stock_positions`、`query_stock_orders`、`query_stock_trades`
-  - 回调推送：`on_stock_order`、`on_stock_trade`、`on_order_error`、`on_cancel_error`、`on_stock_asset`、`on_stock_position`
+- `xtquant.xtdata` (market data)
+  - Snapshot/query: `get_full_tick`, `get_market_data`, `get_market_data_ex`, `get_local_data`
+  - Subscription: `subscribe_quote`, `subscribe_whole_quote`, `unsubscribe_quote`
+- `xtquant.xttrader` (trading)
+  - Order placement: `order_stock`, `order_stock_async`
+  - Cancellation: `cancel_order_stock`
+  - Queries: `query_stock_asset`, `query_stock_positions`, `query_stock_orders`, `query_stock_trades`
+  - Callback pushes: `on_stock_order`, `on_stock_trade`, `on_order_error`, `on_cancel_error`, `on_stock_asset`, `on_stock_position`
 
-映射建议：
+Mapping suggestions:
 
-- `/quote` → 优先取订阅推送缓存，fallback 用 `get_full_tick`
+- `/quote` → prefer the subscription-push cache, with `get_full_tick` as the fallback
 - `/account` → `query_stock_asset`
 - `/positions` → `query_stock_positions`
-- `/order` → `order_stock` 或 `order_stock_async` + 本地 ack 映射
+- `/order` → `order_stock` or `order_stock_async` + a local ack mapping
 - `/cancel` → `cancel_order_stock`
-- `/order/status` → 本地状态缓存 + `query_stock_order(s)` fallback
-- `/fills` → `query_stock_trades` + 本地去重
+- `/order/status` → local status cache + `query_stock_order(s)` as the fallback
+- `/fills` → `query_stock_trades` + local deduplication
 
-## QKA 改造清单
+## QKA Refactoring Checklist
 
-现在的 `qka` 服务通过 `/api/<method>` 动态暴露所有 trader 方法，简单但不适合生产。
+The current `qka` service dynamically exposes all trader methods through `/api/<method>`, which is simple but not suitable for production.
 
-建议升级：
+Recommended upgrades:
 
-1. 固定端点 + 严格请求模型。
-   - 只保留必要路径（`/quote`、`/account`、`/positions`、`/order`、`/cancel`、`/order/status`、`/fills`）。
-   - 校验字段与范围。
-2. 异步订单状态机。
-   - 用 `order_stock_async` + `req_id → order_id` 映射。
-   - 消费回调更新内存状态并持久化。
-3. 幂等与去重。
-   - `/order` 加 `client_order_id`。
-   - 重复提交直接返回上次结果。
-4. 服务端保护与资金管理。
-   - 预检 `available_cash`、`frozen_cash`、手数、单笔名义额、可卖数量。
-   - 违反规则时本地直接拒绝，不下发。
-5. 可观测性。
-   - 按端点统计时延、错误码、回调延迟、重连次数。
-6. 可靠性。
-   - 心跳 + 自动重连 + 行情过期检测 + 熔断。
+1. Fixed endpoints + strict request models.
+   - Keep only the necessary paths (`/quote`, `/account`, `/positions`, `/order`, `/cancel`, `/order/status`, `/fills`).
+   - Validate fields and ranges.
+2. Asynchronous order state machine.
+   - Use `order_stock_async` + a `req_id → order_id` mapping.
+   - Consume callbacks to update in-memory state and persist it.
+3. Idempotency and deduplication.
+   - Add `client_order_id` to `/order`.
+   - Return the previous result directly on a duplicate submission.
+4. Server-side protection and fund management.
+   - Pre-check `available_cash`, `frozen_cash`, lot size, per-order notional, and sellable quantity.
+   - Reject locally on rule violations, without sending the order downstream.
+5. Observability.
+   - Per-endpoint latency, error codes, callback delay, and reconnect count.
+6. Reliability.
+   - Heartbeat + auto-reconnect + stale-quote detection + circuit breaker.
 
-## 延迟与瓶颈分析
+## Latency and Bottleneck Analysis
 
-开 QMT 之前，先优化架构本身：
+Before bringing up QMT, optimize the architecture itself first:
 
-1. **Python HTTP 栈开销**
-   - 动态反射路由既增加开销，也带来序列化噪声。
-   - 处理：固定路由 + 预校验模型 + keep-alive session。
-2. **同步查询路径**
-   - 每次请求都同步查账户/持仓/订单，会阻塞交易主路径。
-   - 处理：回调驱动缓存，查询只作为兜底。
-3. **跨 OS 网络跳转**
-   - Linux → Windows 增加时延抖动。
-   - 处理：同一 LAN、固定路由、不走公网、超时和重试预算都要小。
-4. **代理/路由错乱**
-   - 环境代理可能劫持本地地址。
-   - 处理：客户端禁用代理走网关（本仓库已实现）。
-5. **行情扇出压力**
-   - 用 pull API 轮询大量标的会打满网关。
-   - 处理：订阅推送 + 有界环形缓冲 + 批量端点。
-6. **风险校验只放在策略端**
-   - 如果网关不做守护，直接下单的风险敞口就存在。
-   - 处理：网关侧再做一次硬校验（服务端风控墙）。
+1. **Python HTTP stack overhead**
+   - Dynamic reflective routing adds both overhead and serialization noise.
+   - Remedy: fixed routes + pre-validation models + a keep-alive session.
+2. **Synchronous query path**
+   - Synchronously querying account/holdings/orders on every request blocks the main trading path.
+   - Remedy: a callback-driven cache; queries only as a fallback.
+3. **Cross-OS network hop**
+   - Linux → Windows adds latency jitter.
+   - Remedy: same LAN, fixed routes, no public internet, and small timeout and retry budgets.
+4. **Proxy/routing mix-ups**
+   - Environment proxies may hijack local addresses.
+   - Remedy: the client bypasses proxies when talking to the gateway (already implemented in this repo).
+5. **Market-data fan-out pressure**
+   - Polling many instruments with the pull API can overwhelm the gateway.
+   - Remedy: subscription push + a bounded ring buffer + batch endpoints.
+6. **Risk checks only on the strategy side**
+   - If the gateway has no guard, placing orders directly carries risk exposure.
+   - Remedy: add a hard check on the gateway side as well (a server-side risk-control wall).
 
-## 运行手册
+## Runbook
 
-1. 在装有 miniQMT 的 Windows 主机上启动网关服务。
-2. 验证 Linux 侧能访问 `[gateway].base_url`。
-3. 执行冒烟测试：
+1. Start the gateway service on the Windows host that has miniQMT installed.
+2. Verify that the Linux side can reach `[gateway].base_url`.
+3. Run the smoke test:
    - `uv run python scripts/qmt_gateway_smoke_test.py --base-url http://IP:18080 --token "$QMT_GATEWAY_TOKEN" --account-id "$QMT_ACCOUNT_ID"`
-4. 启动 daemon：
+4. Start the daemon:
    - `uv run python main.py --mode live-daemon --config config/live_qmt_http.toml`
-5. 跑一遍验收清单：
+5. Run through the acceptance checklist:
    - `uv run python scripts/qmt_gateway_acceptance.py --base-url http://IP:18080 --token "$QMT_GATEWAY_TOKEN" --account-id "$QMT_ACCOUNT_ID"`
-   - 可选真实小单测试：
+   - Optional real small-order test:
      - `uv run python scripts/qmt_gateway_acceptance.py --base-url http://IP:18080 --token "$QMT_GATEWAY_TOKEN" --account-id "$QMT_ACCOUNT_ID" --test-order --order-code 000001.SZ --order-qty 100 --order-price 10.0`
 
-## 安全说明
+## Security Notes
 
-- 一定要设置 token 并限制来源 IP。
-- 不要把网关直接暴露到公网。
-- 优先使用 LAN/VPN + 防火墙规则。
+- Always set a token and restrict the source IPs.
+- Do not expose the gateway directly to the public internet.
+- Prefer LAN/VPN + firewall rules.
 
 ---
 
-<a id="3-xtquant-gateway-v2-设计"></a>
+<a id="3-xtquant-gateway-v2-design"></a>
 
-# xtquant_gateway V2 设计
+# xtquant_gateway V2 Design
 
-这是替换旧 `qka` 动态 API 暴露方式的新版网关设计。
+This is the new gateway design that replaces the old way of exposing the dynamic `qka` API.
 
-## 命名与范围
+## Naming and Scope
 
-- 新包名：`xtquant_gateway`
-- 定位：Linux 策略引擎与 Windows miniQMT/xtquant 运行时之间的桥梁，主打低时延、以安全为先、状态可持久化
-- 不需要与旧的动态路由保持向后兼容
+- New package name: `xtquant_gateway`
+- Positioning: the bridge between the Linux strategy engine and the Windows miniQMT/xtquant runtime, focused on low latency, safety first, and persistable state
+- No backward compatibility with the old dynamic routes is required
 
-## 端点契约
+## Endpoint Contract
 
 - `GET /health/live`
 - `GET /health/trader`
@@ -255,27 +255,27 @@ bash scripts/run_daily_live_pipeline.sh
 - `POST /order/status`
 - `POST /fills`
 
-## 核心设计决策
+## Core Design Decisions
 
-1. **低时延**
-   - 固定路由 + 严格请求 schema
-   - 交易会话保持长连接
-   - 行情缓存，在下单前做过期检查
+1. **Low latency**
+   - Fixed routes + strict request schema
+   - The trading session keeps a long-lived connection
+   - Quote cache, with a staleness check before placing orders
 
-2. **安全**
-   - 服务端风控墙（手数、可用资金、保留资金、单笔名义额、每日订单数/名义额、可卖数量）
-   - 行情过期时禁止下单
-   - 关键路径的重连兜底
+2. **Safety**
+   - Server-side risk-control wall (lot size, available funds, reserved funds, per-order notional, daily order count/notional, sellable quantity)
+   - Order placement is forbidden when quotes are stale
+   - Reconnect fallback on critical paths
 
-3. **持久化**
-   - 使用 sqlite（`data/xtquant_gateway.db`）存订单、幂等键、成交、API metrics
-   - 启用 WAL 模式
+3. **Persistence**
+   - Use sqlite (`data/xtquant_gateway.db`) to store orders, idempotency keys, fills, and API metrics
+   - WAL mode enabled
 
-4. **可观测**
-   - 按端点统计成功/失败数与 p50/p95/p99 时延
-   - 在 metrics summary 中暴露重连次数与最后一次重连错误
+4. **Observability**
+   - Per-endpoint success/failure counts and p50/p95/p99 latency
+   - Reconnect count and last reconnect error exposed in the metrics summary
 
-## 启动命令
+## Startup Command
 
 ```bash
 XTG_ACCOUNT_ID=... \
@@ -284,197 +284,197 @@ XTG_TOKEN=... \
 uv run python scripts/run_xtquant_gateway.py
 ```
 
-## 服务端与客户端分离
+## Server/Client Separation
 
-- Win11 网关服务端与 Linux quant 客户端使用独立的 venv。
-- 具体步骤见 `docs/15_网关部署分离.md`。
+- The Win11 gateway server and the Linux quant client use separate venvs.
+- For the concrete steps see section 4 of this document (deployment separation of the gateway server and the quant client).
 
-## 数据边界建议
+## Data Boundary Recommendations
 
-- 回测保持独立，不依赖 xtquant。
-- xtquant 数据仅用于实盘交易主路径和必要的实时行情校验。
-- 只同步策略需要的标的与时间窗，减少压力和复杂度。
+- Keep backtesting independent, with no dependence on xtquant.
+- xtquant data is used only for the live-trading main path and necessary real-time quote validation.
+- Sync only the instruments and time windows the strategy needs, to reduce load and complexity.
 
 ---
 
-<a id="4-网关部署分离"></a>
+<a id="4-gateway-deployment-separation"></a>
 
-# 网关服务端与 quant 客户端的部署分离（Win10 服务端 + WSL2 客户端）
+# Deployment Separation of the Gateway Server and the quant Client (Win10 Server + WSL2 Client)
 
-## 拓扑
+## Topology
 
-- **Win10**：运行 `xtquant_gateway` 服务，连接 miniQMT + xtquant 运行时。
-- **WSL2（Ubuntu/Linux）**：运行 quant 引擎/回测/实盘策略，调用网关 HTTP 端点。
+- **Win10**: runs the `xtquant_gateway` service, connecting to the miniQMT + xtquant runtime.
+- **WSL2 (Ubuntu/Linux)**: runs the quant engine/backtest/live strategy, calling the gateway HTTP endpoints.
 
-## 客户端位置（重要）
+## Client Location (Important)
 
-- `GatewayClient` 是 quant 运行时的一部分，应保留在本仓库内（`quant/gateway`）。
-- 推荐路径：在仓库根目录直接使用 quant 主环境（`uv sync --locked`）。
-- 一句话：**客户端代码与客户端运行时都放在主 quant 项目里。**
+- `GatewayClient` is part of the quant runtime and should stay inside this repo (`quant/gateway`).
+- Recommended path: use the main quant environment directly at the repo root (`uv sync --locked`).
+- In one sentence: **both the client code and the client runtime live in the main quant project.**
 
-## 为什么要分环境
+## Why Separate Environments
 
-- 避免把 Win 独有运行时依赖混进 Linux quant 研究栈
-- 隔离操作风险：网关重启/升级不影响研究环境
-- 网关与 quant 引擎可以按自己的节奏发版
+- Avoid mixing Windows-only runtime dependencies into the Linux quant research stack
+- Isolate operational risk: gateway restarts/upgrades do not affect the research environment
+- The gateway and the quant engine can release on their own schedules
 
-## 环境布局
+## Environment Layout
 
-### Windows 服务端（独立 venv）
+### Windows Server (Separate venv)
 
-1. 在网关目录建 venv：
+1. Create a venv in the gateway directory:
    - `uv venv .venv-gateway-server`
-2. 激活并同步：
+2. Activate and sync:
    - `cd deploy/gateway_server && uv sync --locked`
-3. 启动服务：
-   - 拷贝 `.env.example` 为 `.env` 并填值（`XTG_ACCOUNT_ID`、`XTG_MINI_QMT_PATH`、`XTG_TOKEN`）
-   - 手动启动：`uv run ../../scripts/run_xtquant_gateway.py --env-file .env`
-   - 一键启动（自动拉起 miniQMT + 网关）：`start_gateway_with_miniqmt.bat`
+3. Start the service:
+   - Copy `.env.example` to `.env` and fill in the values (`XTG_ACCOUNT_ID`, `XTG_MINI_QMT_PATH`, `XTG_TOKEN`)
+   - Manual start: `uv run ../../scripts/run_xtquant_gateway.py --env-file .env`
+   - One-click start (automatically launches miniQMT + the gateway): `start_gateway_with_miniqmt.bat`
 
-### WSL2 quant 引擎（独立 venv）
+### WSL2 quant Engine (Separate venv)
 
-1. quant 项目 venv 保持独立：
+1. Keep the quant project venv separate:
    - `uv venv .venv-quant`
    - `uv sync --locked`
 
-## 运行边界
+## Runtime Boundaries
 
-- 回测/优化：完全独立于 xtquant 运行时。
-- 实盘交易路径：仅通过网关。
-- 实时行情校验：网关 `/quote` 只面向策略需要的标的。
+- Backtest/optimization: fully independent of the xtquant runtime.
+- Live trading path: through the gateway only.
+- Real-time quote validation: the gateway `/quote` only serves the instruments the strategy needs.
 
-## 服务端快速启动
+## Quick Start of the Server
 
-- 单独维护一个 Windows 侧的服务端环境：
+- Maintain a separate Windows-side server environment:
   - `cd deploy/gateway_server && uv sync --locked`
-- 用已有脚本启动网关：
+- Start the gateway with the existing script:
   - `uv run ../../scripts/run_xtquant_gateway.py --env-file .env`
 
-## 为什么不能用 `; python ...` 这种简写
+## Why the `; python ...` Shorthand Doesn't Work
 
-- 如果把 miniQMT 与网关放在同一个命令链里启动，miniQMT 会阻塞 shell，后续命令永远执行不到。
-- 请用 detached 启动（`start` / `Popen`），或使用提供的 `start_gateway_with_miniqmt.bat`，脚本会先起 miniQMT 再起网关。
+- If miniQMT and the gateway are started in the same command chain, miniQMT blocks the shell and the subsequent commands never get executed.
+- Use a detached start (`start` / `Popen`), or the provided `start_gateway_with_miniqmt.bat`, which starts miniQMT first and then the gateway.
 
 ---
 
-<a id="5-xtdata-最小必要同步策略"></a>
+<a id="5-xtdata-minimal-necessary-sync-strategy"></a>
 
-# xtdata 最小必要同步策略
+# xtdata Minimal Necessary Sync Strategy
 
-本策略定义：从 `xtdata` 同步什么、什么时候同步、以及为什么。
+This strategy defines what to sync from `xtdata`, when to sync it, and why.
 
-## 原则
+## Principles
 
-- 回测保持可复现、独立于网关运行时。
-- xtdata 用于**在非交易时段补齐缺失的行情**，以及**在盘中支持实盘风控校验**。
-- 只同步必要的标的与时间段，控制时延与存储压力。
+- Keep backtesting reproducible and independent of the gateway runtime.
+- xtdata is used to **fill in missing market data outside trading hours**, and to **support live-trading risk-control checks intraday**.
+- Sync only the necessary instruments and periods, to control latency and storage pressure.
 
-## 时间窗口
+## Time Windows
 
-- **T 日 15:20 – 次日 08:50（非盘中）**：
-  - 跑增量同步任务
-  - 校验数据质量与完整性
-  - 必要时刷新回测数据集并重跑验证
-- **盘中**：
-  - 不做历史数据批量下载
-  - 仅订阅/查询实时行情，用于实盘信号与风控
+- **Day T 15:20 – next day 08:50 (outside trading hours)**:
+  - Run the incremental sync job
+  - Validate data quality and completeness
+  - Refresh the backtest dataset and re-run validation when necessary
+- **Intraday**:
+  - No bulk historical data downloads
+  - Only subscribe to/query real-time quotes, for live signals and risk control
 
-## 最小必要同步范围
+## Minimal Necessary Sync Scope
 
-1. 基准与状态指数
-   - 日线，可选 1 分钟，用于市场状态特征
-2. 候选股池
-   - 策略候选池中的股票，不必全市场
-3. 当前持仓 + 观察池
-   - 保证分钟/日线连贯，供风控与止损逻辑使用
-4. 分红/复权因子
-   - 用于历史价格干净拼接
+1. Benchmark and regime indices
+   - Daily bars, optionally 1-minute bars, for market-regime features
+2. Candidate stock pool
+   - Stocks in the strategy's candidate pool, not the whole market
+3. Current holdings + watchlist
+   - Keep minute/daily bars continuous for the risk-control and stop-loss logic
+4. Dividend/adjustment factors
+   - For clean stitching of historical prices
 
-## 为什么这样做能站得住
+## Why This Holds Up
 
-- xtdata 文档建议单股订阅数受限，高订阅场景优先用整市订阅。
-- 历史请求要控制区间/条数，避免长响应延迟。
-- 板块/分类等静态数据日更/周更即可，不需要每次调用。
+- The xtdata docs note that the number of single-stock subscriptions is limited; for high-subscription scenarios prefer whole-market subscription.
+- Historical requests should limit the range/row count, to avoid long-response latency.
+- Static data such as sectors/classifications only needs daily/weekly refreshes, not a call every time.
 
-## 推荐使用的 xtdata 调用
+## Recommended xtdata Calls
 
-- 历史增量：
-  - `download_history_data2(...)`：按选定标的批量下载
-- 实时：
-  - `subscribe_whole_quote(...)`：整市订阅
-  - `get_full_tick(...)`：点查兜底
-- 交易日历：
+- Historical incremental:
+  - `download_history_data2(...)`: bulk download for the selected instruments
+- Real-time:
+  - `subscribe_whole_quote(...)`: whole-market subscription
+  - `get_full_tick(...)`: point-query fallback
+- Trading calendar:
   - `get_trading_calendar(...)`
-- 复权因子：
+- Adjustment factors:
   - `get_divid_factors(...)`
 
 ---
 
-<a id="6-qka-网关生产化清单"></a>
+<a id="6-qka-gateway-production-readiness-checklist"></a>
 
-# QKA 网关生产化清单
+# QKA Gateway Production-Readiness Checklist
 
-本清单用于将 `third-party/qka` 从 demo 桥接升级为可生产的网关。
+This checklist is for upgrading `third-party/qka` from a demo bridge to a production-ready gateway.
 
-## 目前进度
+## Current Progress
 
-- 已实现：
-  - 固定路由（`/quote`、`/account`、`/positions`、`/order`、`/cancel`、`/order/status`、`/fills`）
-  - 严格请求模型 + token 鉴权（`Bearer` + 兼容 `X-Token`）
-  - 订单 `client_order_id` 幂等缓存
-  - 服务端交易前风控墙（现金/手数/可卖数量/日限）
-  - 健康检查路由（`/health/live`、`/health/trader`、`/health/quote`）
-  - 下单前的行情过期守护
-  - 关键查询/下单路径的重连兜底
-  - 订单/幂等/成交的 sqlite 持久化（`qka_gateway_state.db`）
-  - `/metrics/summary`：按端点的 p50/p95/p99 + 状态计数
-  - 一键验收脚本（`scripts/qmt_gateway_acceptance.py`）
-- 待办：
-  - 更完整的直方图 / 长期外部 metrics 沉淀（Prometheus/TSDB）
+- Implemented:
+  - Fixed routes (`/quote`, `/account`, `/positions`, `/order`, `/cancel`, `/order/status`, `/fills`)
+  - Strict request models + token authentication (`Bearer`, with `X-Token` compatibility)
+  - Idempotency cache for order `client_order_id`
+  - Server-side pre-trade risk-control wall (cash/lot size/sellable quantity/daily limits)
+  - Health-check routes (`/health/live`, `/health/trader`, `/health/quote`)
+  - Stale-quote guard before order placement
+  - Reconnect fallback on critical query/order paths
+  - sqlite persistence of orders/idempotency/fills (`qka_gateway_state.db`)
+  - `/metrics/summary`: per-endpoint p50/p95/p99 + status counts
+  - One-click acceptance script (`scripts/qmt_gateway_acceptance.py`)
+- To do:
+  - Fuller histograms / long-term external metrics retention (Prometheus/TSDB)
 
-## API 表面
+## API Surface
 
-- 替换掉 `/api/<method>` 的动态暴露，改成固定路由：
-  - `/quote`、`/account`、`/positions`、`/order`、`/cancel`、`/order/status`、`/fills`
-- 添加严格的请求/响应 schema 与字段校验。
-- `/order` 加 `client_order_id` 幂等键。
+- Replace the dynamic `/api/<method>` exposure with fixed routes:
+  - `/quote`, `/account`, `/positions`, `/order`, `/cancel`, `/order/status`, `/fills`
+- Add strict request/response schemas and field validation.
+- Add a `client_order_id` idempotency key to `/order`.
 
-## 交易安全墙（服务端）
+## Trading Safety Wall (Server Side)
 
-- 交易前校验：
-  - 手数是 A 股常见的 100 的倍数
-  - 可用现金与冻结资金
-  - 单笔名义额上限
-  - 每日名义额上限、每日下单数上限
-  - 卖出数量 <= 可用持仓
-- 校验失败时本地拒绝，不下发到 xttrader。
+- Pre-trade checks:
+  - Lot size is a multiple of 100, as is common for A-shares
+  - Available cash and frozen funds
+  - Per-order notional cap
+  - Daily notional cap and daily order-count cap
+  - Sell quantity <= available holdings
+- On a validation failure, reject locally and do not send the order to xttrader.
 
-## 状态与恢复
+## State and Recovery
 
-- 用回调驱动状态缓存：
-  - 订单状态、成交、持仓、账户
-- 把关键快照持久化到本地 sqlite：
-  - 挂单、最新 `order_id` 映射、去重键
-- 重启时：
-  - 用 xttrader 查询 API + 本地持久化缓存重建状态
+- Use callbacks to drive the state cache:
+  - Order status, fills, holdings, account
+- Persist key snapshots to local sqlite:
+  - Open orders, the latest `order_id` mapping, dedup keys
+- On restart:
+  - Rebuild state using the xttrader query APIs + the locally persisted cache
 
-## 性能与时延
+## Performance and Latency
 
-- 长驻一个 xttrader 会话与一个 HTTP client session。
-- 用异步下单路径 + 回调确认。
-- 热路径避免频繁 `query_*` 全量轮询，用缓存 + 兜底轮询。
-- 策略批量查询多个标的时，网关侧做批量行情请求。
+- Keep one long-lived xttrader session and one HTTP client session.
+- Use the async order path + callback confirmation.
+- Avoid frequent full `query_*` polling on the hot path; use a cache + fallback polling.
+- When the strategy queries many instruments in a batch, make batch quote requests on the gateway side.
 
-## 运维
+## Operations
 
-- 加健康检查：
-  - `/health/live`、`/health/trader`、`/health/quote`
-- 加 metrics：
-  - 端点时延 p50/p95/p99
-  - 回调延迟
-  - 拒单率
-  - 重连次数
-- 告警：
-  - 断连/重连循环
-  - 行情过期超阈值
-  - 连续拒单突发
+- Add health checks:
+  - `/health/live`, `/health/trader`, `/health/quote`
+- Add metrics:
+  - Endpoint latency p50/p95/p99
+  - Callback delay
+  - Order rejection rate
+  - Reconnect count
+- Alerts:
+  - Disconnect/reconnect loops
+  - Stale quotes beyond the threshold
+  - Bursts of consecutive order rejections

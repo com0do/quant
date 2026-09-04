@@ -1,0 +1,36 @@
+version: "1.0"
+name: jq-signin
+displayName: JoinQuant daily sign-in
+stages:
+- name: JoinQuant sign-in
+  displayName: JoinQuant sign-in
+  strategy: naturally
+  trigger: auto
+  executor: []
+  steps:
+  - step: build@python
+    name: jq_signin
+    displayName: Sign in and claim credits
+    pythonVersion: "3.12"
+    commands:
+    # ref_variable below injects the Gitee Go general variables; export them with command tracing off.
+    - set +x
+    - "export JQ_USERNAME=\"${JQ_USERNAME}\" JQ_PASSWORD=\"${JQ_PASSWORD}\""
+    - bash scripts/ci_jq_signin.sh
+    artifacts:
+    - name: JQ_SIGNIN_DEBUG
+      path:
+      - ./output
+      type: .tar.gz
+triggers:
+  trigger: auto
+  schedule:
+  - cron: 0 5 8 * * ?
+notify: []
+strategy:
+  timeout: 30
+  cloneDepth: 1
+ref_variable:
+- JQ_USERNAME
+- JQ_PASSWORD
+- DEEPSEEK_API_KEY

@@ -1,0 +1,23 @@
+case_id,slide,name,name_en,code,claimed_start,claimed_end,claimed_days,claimed_return_pct,chart_start,chart_end,chart_bars,note
+c01,13,深中华A,Shenzhonghua A,000017.XSHE,2024-01-09,2024-01-19,9,136,2023-09-27,2024-02-27,97,
+c02,14,克来机电,Kelai Mechatronics,603960.XSHG,2024-02-08,2024-02-28,9,100,2023-11-10,2024-04-03,97,
+c03,15,金盾股份,Jindun,300411.XSHE,2024-03-11,2024-03-17,11,70,2023-12-12,2024-05-23,106,slide says 70%+; 2024-03-17 is a Sunday
+c04,16,正丹股份,Zhengdan,300641.XSHE,2024-04-11,2024-04-23,9,188,2024-02-19,2024-07-08,90,
+c05,17,英力股份,Yingli,300956.XSHE,2024-05-20,2024-06-03,11,160,2024-04-01,2024-06-26,57,
+c06,18,逸豪新材,Yihao New Materials,301176.XSHE,2025-06-04,2025-06-19,11,110,2025-04-30,2025-07-23,57,slide label says 2024-06 but the chart is 2025; slide calls it two waves
+c07,19,大众交通,Dazhong Transportation,600611.XSHG,2024-07-09,2024-07-15,15,223,2024-06-13,2024-08-23,52,
+c08,20,深圳华强,Shenzhen Huaqiang,000062.XSHE,2024-08-19,2024-09-11,15,333,2024-06-19,2024-09-19,65,
+c09,21,银之杰,Yinzhijie,300085.XSHE,2024-09-20,2024-10-09,9,360,2024-07-08,2024-10-23,71,
+c10,22,光智科技,Guangzhi Technology,300489.XSHE,2024-09-27,2024-10-25,11,386,2024-07-30,2024-11-15,67,
+c11,23,日出东方,Richu Dongfang,603366.XSHG,2024-11-04,2024-11-11,6,49,2024-10-11,2024-12-25,54,"second claim on the same slide: 2024-11-03..2024-11-19, 5 trading days, 49.65%"
+c12,24,润欣科技,Runxin Technology,300493.XSHE,2024-12-11,2024-12-16,4,65,2024-11-12,2025-01-13,44,
+c13,26,万达轴承,Wanda Bearing,920002.BJ,2025-02-25,2025-02-28,4,77,2024-12-13,2025-03-24,65,Beijing Stock Exchange
+c14,27,中毅达,Zhongyida,600610.XSHG,2025-03-17,2025-03-27,9,114,2024-12-20,2025-04-28,84,
+c15,28,中邮科技,Zhongyou Technology,688648.XSHG,2025-05-26,2025-05-29,4,49,2025-02-10,2025-06-19,89,slide typo 5月229日; slide says best 4 trading days
+c16,29,北方长龙,Beifang Changlong,301357.XSHE,2025-06-16,2025-06-20,5,50,2025-02-27,2025-07-07,78,
+c17,30,上纬新材,Shangwei New Materials,688585.XSHG,2025-06-27,2025-07-23,14,659.21,2025-05-12,2025-08-18,62,
+c18,31,戈碧迦,Gebijia,920438.BJ,2025-07-30,2025-08-19,15,161.74,2025-06-04,2025-08-28,62,Beijing Stock Exchange
+c19,32,首开股份,Shoukai,600376.XSHG,2025-09-05,2025-09-17,9,130,2025-08-01,2025-10-20,51,
+c20,33,国晟科技,Guosheng Technology,603778.XSHG,2025-11-03,2025-11-17,11,80,2025-08-13,2025-12-02,74,slide typo 1月17日 for 11月17日
+c21,34,天力复合,Tianli Composite,920576.BJ,2025-12-11,2025-12-19,7,139,2025-09-22,2025-12-25,63,Beijing Stock Exchange
+x01,11,士兰微,Silan Microelectronics,600460.XSHG,,,,,2026-02-02,2026-07-13,105,indicator chart without a return claim

@@ -1,24 +1,24 @@
-# quant/ml/hermes/ — Hermes agent 桥接（主 venv 侧）
+# quant/ml/hermes/ — Hermes agent bridge (main-venv side)
 
-**本目录里的代码只在主 quant venv（Py 3.12）里跑**。它是"跨到 hermes 世界"的入口。
-真正跑在 hermes venv（Py 3.11）里的 plugin 代码在**仓库根的 `hermes_plugin/`**——那才是 Hermes plugin。
+**The code in this directory runs only in the main quant venv (Py 3.12)**. It is the entry point for "crossing into the hermes world".
+The plugin code that actually runs in the hermes venv (Py 3.11) is in **`hermes_plugin/` at the repo root** — that is the real Hermes plugin.
 
-不要把两个 venv 的代码放同一棵目录树。
+Do not put code for the two venvs in the same directory tree.
 
-## 目录
+## Directory layout
 
 ```
 quant/ml/hermes/
-├── __init__.py     # 导出 runner 的公开 API
-├── runner.py       # 用 `hermes -z` CLI 起 profile-scoped 会话
-├── rpc.py          # RPC 端点：hermes_plugin 反向 subprocess 到这里
-└── README.md       # 本文
+├── __init__.py     # exports the runner's public API
+├── runner.py       # starts a profile-scoped session via the `hermes -z` CLI
+├── rpc.py          # RPC endpoint: hermes_plugin subprocesses back into here
+└── README.md       # this file
 ```
 
-对应的 hermes-venv-side 代码在：
+The corresponding hermes-venv-side code is at:
 
 ```
-<repo>/hermes_plugin/    # symlink 到 ~/.hermes/profiles/<profile>/plugins/quant/
+<repo>/hermes_plugin/    # symlinked to ~/.hermes/profiles/<profile>/plugins/quant/
 ├── plugin.yaml
 ├── __init__.py         # register(ctx)
 ├── tool_schemas.py
@@ -28,52 +28,52 @@ quant/ml/hermes/
 └── README.md
 ```
 
-## 数据流
+## Data flow
 
 ```
-主 venv (Py 3.12)                              hermes venv (Py 3.11)
+Main venv (Py 3.12)                            hermes venv (Py 3.11)
 ─────────────────                              ─────────────────
 main.py --mode hermes-chat
   └─▶ quant.ml.hermes.runner.chat(prompt)
-       └─▶ subprocess: `hermes -z PROMPT`      hermes gateway 起，加载 profile
+       └─▶ subprocess: `hermes -z PROMPT`      hermes gateway starts, loads profile
              HERMES_HOME=~/.hermes/                  plugin: hermes_plugin/__init__.py
-             profiles/quant/                              register(ctx)：注册 5 工具 + 4 skill
+             profiles/quant/                              register(ctx): registers 5 tools + 4 skills
                                                     ↓
-                                                    agent 决定调 get_kbars
+                                                    agent decides to call get_kbars
                                                     ↓
                                                     tool handler:
                                                       subprocess `uv run python`
                                                       `-m quant.ml.hermes.rpc`
              ◀───── back in main venv ─────
              quant.ml.hermes.rpc.HANDLERS['get_kbars'](...)
-               └─▶ sqlite3 读 data/runtime/*.db
-               └─▶ json.dumps 打到 stdout
+               └─▶ sqlite3 reads data/runtime/*.db
+               └─▶ json.dumps prints to stdout
              ─────── to plugin handler ──────▶
-                                                    handler 拿到 JSON 返回 hermes
+                                                    handler gets the JSON and returns it to hermes
                                                     ↓
-                                                    agent 汇总最终回复
+                                                    agent composes the final reply
                                               ─── stdout ───▶
-       runner 收到 stdout
-       └─▶ 返回 {"response": ...}
+       runner receives stdout
+       └─▶ returns {"response": ...}
 ```
 
-## 起手
+## Getting started
 
-先在**仓库根**跑装 plugin：
+First install the plugin by running this at the **repo root**:
 
 ```bash
-bash hermes_plugin/setup.sh                # 建 profile "quant"，symlink plugin，写 .env
+bash hermes_plugin/setup.sh                # creates profile "quant", symlinks the plugin, writes .env
 ```
 
-然后从主 venv 用：
+Then use it from the main venv:
 
 ```bash
 uv run python main.py --mode hermes-chat --prompt "hi"
 uv run python main.py --mode hermes-chat --skill analyst_zoe --code 000001.XSHE --date 2025-08-01
-uv run python main.py --mode hermes-chat --profile alt_profile --prompt "..."   # 用别的 profile
+uv run python main.py --mode hermes-chat --profile alt_profile --prompt "..."   # use a different profile
 ```
 
-## Runner 公开 API
+## Runner public API
 
 ```python
 from quant.ml.hermes import chat, run_skill, is_installed, HermesInstallation, DEFAULT_PROFILE
@@ -81,38 +81,38 @@ from quant.ml.hermes import chat, run_skill, is_installed, HermesInstallation, D
 chat(prompt, profile="quant", toolsets="core,quant", skill=None, timeout_sec=600, extra=None, model=None)
 run_skill("analyst_zoe", code="000001.XSHE", date="2025-08-01", profile="quant")
 
-is_installed(profile="quant")           # bool，只看 hermes CLI 是否可达
-HermesInstallation.detect("quant").diagnose()   # 详细状态字典
+is_installed(profile="quant")           # bool; only checks whether the hermes CLI is reachable
+HermesInstallation.detect("quant").diagnose()   # detailed status dict
 ```
 
-## RPC 端点
+## RPC endpoints
 
 ```bash
 uv run python -m quant.ml.hermes.rpc <cmd> <json_args>
 ```
 
-5 个 `cmd`：`get_kbars / get_fundamentals / get_announcements / compute_factor / run_backtest_slice`。
+The 5 `cmd` values: `get_kbars / get_fundamentals / get_announcements / compute_factor / run_backtest_slice`.
 
-每条 JSON 参数：
+JSON arguments for each call:
 ```bash
 uv run python -m quant.ml.hermes.rpc get_kbars '{"code":"000001.XSHE","start_date":"2024-01-01","end_date":"2024-01-31"}'
 ```
 
-失败时 stdout 打 `{"error": "..."}`，rc 非 0。
+On failure, stdout prints `{"error": "..."}` and the rc is non-zero.
 
-## 降级
+## Degradation
 
-- hermes CLI 不在 PATH → runner 返回 `{"error": "hermes CLI not found on PATH", "hint": "..."}`
-- profile 目录缺失 / plugin symlink 缺失 → runner 返回 `{"error": "profile not set up", "hint": "bash hermes_plugin/setup.sh"}`
-- RPC 端点某个 handler 里数据库缺失 → 返回结构化 error + hint，agent 转达用户
+- hermes CLI not on PATH → runner returns `{"error": "hermes CLI not found on PATH", "hint": "..."}`
+- profile directory missing / plugin symlink missing → runner returns `{"error": "profile not set up", "hint": "bash hermes_plugin/setup.sh"}`
+- A database missing inside an RPC endpoint handler → returns a structured error + hint, which the agent relays to the user
 
-主 quant 链路（backtest / walk-forward / optimize / live-auto）不依赖 hermes——就算 hermes 全挂，那些都能跑。
+The main quant pipeline (backtest / walk-forward / optimize / live-auto) does not depend on hermes — even if hermes is completely down, all of those still run.
 
-## 相关文档
+## Related documents
 
-- 顶层导航：`AGENTS.md`
-- 计划与决策：`docs/07_ai_research.md`
-- LLM 一次性调用层：`quant/ml/llm/README.md`
-- Plugin（hermes venv 侧）：`hermes_plugin/README.md`
-- Hermes 官方：<https://hermes-agent.nousresearch.com/docs>
-- Profile 手册：<https://hermes-agent.nousresearch.com/docs/user-guide/profiles>
+- Top-level navigation: `AGENTS.md`
+- Plans and decisions: `docs/07_ai_research.md`
+- One-shot LLM call layer: `quant/ml/llm/README.md`
+- Plugin (hermes-venv side): `hermes_plugin/README.md`
+- Hermes official docs: <https://hermes-agent.nousresearch.com/docs>
+- Profiles guide: <https://hermes-agent.nousresearch.com/docs/user-guide/profiles>

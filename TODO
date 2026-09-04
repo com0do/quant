@@ -1,22 +1,22 @@
 
-这是一个个人量化的仓库，目标是使用github action周期的运行来驱动量化交易。但交易所的软件是以来win系统的，
-我不知道github的 win容器 + 我的quant账号信息能不能运行起来。
-电脑本地可以验证架构的合理性，然后尝试使用github action 来驱动。
+This is a personal quant repo. The goal is to drive quantitative trading with periodic GitHub Actions runs. But the exchange's software depends on Windows,
+and I do not know whether a GitHub Windows container + my quant account credentials can run it.
+The architecture can be validated on my local machine first, and then I can try driving it with GitHub Actions.
 
 
-你重新学习目前的架构，同时考虑一下几个问题：
-1 确认一下目前交易所（比如国金） 还放开miniquant吗？如果还提供，我们就可以使用 wsl + win11(miniquant)的方式运行，
-  wsl运行我们的代码（我们的股票数据也是本地的），本地做数据库更新(我目前使用的聚宽的账号更新数据库的)，潜力股查找。
-  如果目前不再提供miniquant，只提供 quant，我们就需要使用交易所的软件（运行在win11), 本地搭建api server 访问本地程序。
+Please re-learn the current architecture, and also consider the following questions:
+1 Confirm whether brokers (e.g. Guojin Securities) still offer miniQMT. If they do, we can run with WSL + Win11 (miniQMT):
+    WSL runs our code (our stock data is local too), updates the local database (I currently use my JoinQuant account to update it) and searches for promising stocks.
+    If miniQMT is no longer offered and only full QMT is, we have to use the broker's software (running on Win11) and set up a local API server to access the local program.
 
-2 我们的交易系统可以使用机器学习，ai agent(hermes) 来做数据分析，财报分析，数据闭环，但这部分我还不知道如何引入。
+2 Our trading system could use machine learning and an AI agent (hermes) for data analysis, financial-report analysis and a data feedback loop, but I do not yet know how to introduce this part.
 
-3 策略不是约复杂约好，历史数据不能过度依赖（否则模型容易过拟合），股票市场是零和博弈，有人赚钱就有人亏钱，一个策略
-  现在赚钱了不代表永远赚钱，时效性过去了就无法赚钱了，我们该怎么保证我们的策略不过度复杂，同时随着市场自动演进哪？
-4 我们目前操作的是股票，未来可能有基金，债券，那些内容放到quant软件中，那些放到软件架构中。你也可以参考一下开源的
- 量化架构，但需要尽量满足我们的要求。
-5 如果你找到了方案，把当前的架构整理一下，我需要在不同的电脑上使用github来同步更改。
+3 A more complex strategy is not a better strategy, and historical data must not be over-relied on (otherwise the model easily overfits). The stock market is a zero-sum game: when someone makes money someone else loses it, and a strategy
+    that makes money now will not make money forever; once its time-sensitivity is gone it stops earning. How do we keep our strategies from becoming over-complex while letting them evolve automatically with the market?
+4 We currently trade stocks; in the future there may be funds and bonds. What belongs in the quant software and what belongs in the software architecture? You can also refer to open-source
+  quant architectures, but they must meet our requirements as far as possible.
+5 Once you have a solution, organize the current architecture; I need to sync changes across different computers via GitHub.
 
-我总结的可能有矛盾的地方，你根据合理的量化架构来合理评估出一个可行的方案。写一个演进文档，我们来一步一步的执行。
+What I summarized may contain contradictions; please evaluate a feasible plan on the basis of a sound quant architecture. Write an evolution document and we will execute it step by step.
 
-我们的github remote地址：  git@github.com:com0do/quant.git
+Our GitHub remote address:  git@github.com:com0do/quant.git

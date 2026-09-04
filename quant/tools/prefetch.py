@@ -82,6 +82,7 @@ def run_prefetch(config_path: str | None = None) -> dict:
             except Exception as exc:
                 msg = str(exc)
                 out["errors"] += 1
+                # Matches the JoinQuant server error text meaning "maximum query limit"; it must stay Chinese
                 if "最大查询限制" in msg or "query" in msg.lower():
                     out["quota_exhausted"] = True
                     out["status"] = "quota_blocked"
@@ -142,6 +143,7 @@ def run_prefetch(config_path: str | None = None) -> dict:
     except Exception as exc:
         msg = str(exc)
         out["error_message"] = msg
+        # Matches the JoinQuant server error text meaning "maximum query limit"; it must stay Chinese
         if "最大查询限制" in msg or "query" in msg.lower():
             out["status"] = "quota_blocked"
             out["quota_exhausted"] = True

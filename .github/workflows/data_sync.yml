@@ -73,8 +73,8 @@ jobs:
 
       - name: Run JQ bulk sync
         env:
-          CC_JQ_NAME: ${{ secrets.JQ_USERNAME }}
-          CC_JQ_PW: ${{ secrets.JQ_PASSWORD }}
+          JQ_USERNAME: ${{ secrets.JQ_USERNAME }}
+          JQ_PASSWORD: ${{ secrets.JQ_PASSWORD }}
         run: |
           echo "Running JQ bulk sync (smallcap)..."
           uv run python scripts/jq_bulk_sync_smallcap.py 2>&1 | tee sync_output.txt

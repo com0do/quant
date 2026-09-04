@@ -404,10 +404,10 @@ def main() -> int:
     args = _parse_args()
     _setup_proxy_from_env()
 
-    name = os.getenv("CC_JQ_NAME")
-    pw = os.getenv("CC_JQ_PW")
+    name = os.getenv("JQ_USERNAME")
+    pw = os.getenv("JQ_PASSWORD")
     if not name or not pw:
-        print("[ERR] missing CC_JQ_NAME / CC_JQ_PW")
+        print("[ERR] missing JQ_USERNAME / JQ_PASSWORD")
         return 2
 
     import jqdatasdk as jq

@@ -125,6 +125,7 @@ while true; do
     echo "[DONE] quota reached; stop batches."
     break
   fi
+  # The pattern is the JoinQuant server error text meaning "the account permission can only fetch ..."; it must stay Chinese
   if rg -q "账号权限仅能获取" "${log_file}"; then
     echo "[DONE] permission window reached; stop batches."
     break

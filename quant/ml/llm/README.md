@@ -1,50 +1,50 @@
-# LLM 一次性调用层
+# One-shot LLM call layer
 
-**定位**：文本进 → 结构化 JSON 出。**无状态、无工具、无记忆**。
+**Positioning**: text in → structured JSON out. **Stateless, no tools, no memory**.
 
-**跟 `quant/ml/hermes/` 的区别**：
+**Difference from `quant/ml/hermes/`**:
 
-| | LLM 层（本目录） | Hermes agent 层 |
+| | LLM layer (this directory) | Hermes agent layer |
 |---|---|---|
-| 场景 | 批量结构化提取（公告→JSON） | 多步推理、要查库、要记忆 |
-| 输入 | 一段文本 | 一个任务描述 |
-| 工具调用 | 无 | 有（`get_kbars` / `get_fundamentals` …） |
-| 会话 | 单次 | 多轮 |
-| 成本 | 每次一 token | 每次可能多 token（工具循环） |
-| 后端 | 直连 DeepSeek HTTP | 走 hermes-agent runtime |
+| Use case | Batch structured extraction (announcement→JSON) | Multi-step reasoning, DB lookups, memory |
+| Input | A piece of text | A task description |
+| Tool calls | None | Yes (`get_kbars` / `get_fundamentals` …) |
+| Session | Single-shot | Multi-turn |
+| Cost | One round of token cost per call | Possibly many tokens per call (tool loop) |
+| Backend | Direct DeepSeek HTTP | Goes through the hermes-agent runtime |
 
-## 快速上手
+## Quick start
 
-### 1) 配 DeepSeek
+### 1) Configure DeepSeek
 
-复制 `.env.example` 为 `.env`，填：
+Copy `.env.example` to `.env` and fill in:
 
 ```
-DEEPSEEK_API_KEY=sk-xxx           # 必填
-DEEPSEEK_MODEL=deepseek-chat      # 默认 deepseek-chat；推理场景可切 deepseek-reasoner
-DEEPSEEK_BASE_URL=https://api.deepseek.com   # 官方；也可硅基流动 / 自建
+DEEPSEEK_API_KEY=sk-xxx           # required
+DEEPSEEK_MODEL=deepseek-chat      # default deepseek-chat; switch to deepseek-reasoner for reasoning scenarios
+DEEPSEEK_BASE_URL=https://api.deepseek.com   # official; SiliconFlow / self-hosted also work
 ```
 
-### 2) 准备公告 JSONL
+### 2) Prepare the announcement JSONL
 
-`data/nlp/inbox/*.jsonl`，一行一份：
+`data/nlp/inbox/*.jsonl`, one announcement per line:
 
 ```jsonl
-{"code":"000001.XSHE","date":"2025-01-15","title":"业绩预告","text":"公司预计 2024 年营业收入 ..."}
-{"code":"600519.XSHG","date":"2025-01-16","title":"股份回购公告","text":"公司拟以自有资金 ..."}
+{"code":"000001.XSHE","date":"2025-01-15","title":"Earnings forecast","text":"The company expects 2024 operating revenue ..."}
+{"code":"600519.XSHG","date":"2025-01-16","title":"Share buyback announcement","text":"The company plans to use its own funds ..."}
 ```
 
-### 3) 跑
+### 3) Run
 
 ```bash
-uv run python main.py --mode nlp-analyze --dry-run     # 冒烟，不调 API
-uv run python main.py --mode nlp-analyze               # 实跑
-uv run python main.py --mode nlp-analyze --limit 20    # 限量
+uv run python main.py --mode nlp-analyze --dry-run     # smoke test, no API call
+uv run python main.py --mode nlp-analyze               # real run
+uv run python main.py --mode nlp-analyze --limit 20    # limit the count
 ```
 
-产物：`data/nlp/signals.db` 的 `nlp_signals` 表；`source_text_hash` 做幂等。
+Output: the `nlp_signals` table in `data/nlp/signals.db`; `source_text_hash` provides idempotency.
 
-## 表结构
+## Table schema
 
 ```sql
 CREATE TABLE nlp_signals (
@@ -60,25 +60,25 @@ CREATE TABLE nlp_signals (
     risk_flags TEXT,         -- JSON list
     summary TEXT,
     confidence REAL,
-    generated_by TEXT,       -- 记录用的 DeepSeek 模型名
+    generated_by TEXT,       -- records the DeepSeek model name used
     generated_at TEXT,
     raw_error TEXT
 );
 ```
 
-## 降级模式
+## Degraded mode
 
-- `.env` 缺 `DEEPSEEK_API_KEY` / 端点不可达（`ping()` 失败）：整个批次直接返回，不写库。
-- 单条解析失败：写入 neutral 记录，`raw_error` 保留错误信息，主流程不中断。
-- 幂等：`source_text_hash` 主键；已处理的公告不会再次调用 API。
+- `.env` lacks `DEEPSEEK_API_KEY` / endpoint unreachable (`ping()` fails): the whole batch returns immediately without writing to the DB.
+- A single parse failure: a neutral record is written, `raw_error` keeps the error message, and the main flow is not interrupted.
+- Idempotency: `source_text_hash` is the primary key; announcements already processed will not call the API again.
 
-## 与因子链路的对接（下一步）
+## Integration with the factor pipeline (next step)
 
-- 在 `quant/tools/factor_analyze.py` 中加载 `nlp_signals`，与量价因子一起做 IC/IR。
-- 显著的字段（例如 `sentiment_score` × `confidence`）经过 walk-forward 验证后纳入 `simple_3factor` / `gbm_multifactor` 的特征。
+- Load `nlp_signals` in `quant/tools/factor_analyze.py` and run IC/IR together with the price-volume factors.
+- Significant fields (e.g. `sentiment_score` × `confidence`) are admitted as features of `simple_3factor` / `gbm_multifactor` after walk-forward validation.
 
-## 局限
+## Limitations
 
-- **幻觉**：LLM 可能编造数字。**任何入池信号必须过 walk-forward IC 检验**。
-- **上下文长度**：长报告被截断到 30k 字符；超长报告需要用 RAG 分块（本模块未实现，走 Hermes agent + `announcements` 工具再迭代）。
-- **单轮**：如果需要"先查历史财报再对比这次的"，用不了 LLM 层，必须走 Hermes agent。
+- **Hallucination**: the LLM may fabricate numbers. **Any signal admitted to the pool must pass a walk-forward IC test**.
+- **Context length**: long reports are truncated to 30k characters; very long reports need RAG chunking (not implemented in this module; to be iterated via the Hermes agent + the `announcements` tool).
+- **Single round**: if you need to "first look up historical financial reports and then compare against this one", the LLM layer can't do it; you must go through the Hermes agent.

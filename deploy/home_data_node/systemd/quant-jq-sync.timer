@@ -1,0 +1,17 @@
+[Unit]
+Description=Quant: schedule daily JoinQuant sync
+Requires=quant-jq-sync.service
+
+[Timer]
+# Injected by setup.sh from JQ_SYNC_ONCALENDAR in .env.
+# Default: weekdays 15:35 CST (= 07:35 UTC).
+OnCalendar=@JQ_SYNC_ONCALENDAR@
+
+# Runs missed while the machine was asleep are made up
+Persistent=true
+
+# 5-minute jitter so that not every node hits the JQ server in the same second
+RandomizedDelaySec=300
+
+[Install]
+WantedBy=timers.target

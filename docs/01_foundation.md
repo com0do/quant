@@ -1,45 +1,46 @@
-# 一、基础与理念
+# I. Foundations and Principles
 
-> 本篇是入门必读，合并了 4 份基础理念文档：系统演进计划、交易笔记、风控规则、量化的优势与局限。
-> 如果你只有 1 小时先看这一篇。
+> This file is a must-read for getting started. It merges 4 foundational documents: the system evolution plan, trading notes, risk-control rules, and the advantages and limitations of quant.
+> If you only have 1 hour, read this one first.
 
-## 目录
+## Table of Contents
 
-- [1. 系统演进计划（架构 + 矛盾 + ADR + 路线图）](#1-系统演进计划)
-- [2. 用户交易笔记（交易认知与实盘规则）](#2-用户交易笔记)
-- [3. 实盘执行与风控规则（不可谈判的铁律）](#3-实盘执行与风控规则)
-- [4. 量化的优势与局限（4 组反思）](#4-量化的优势与局限)
-
----
-
-<a id="1-系统演进计划"></a>
-# Quant 系统演进计划
-
-> 基于当前架构的深度审查 + 外部依赖调研，识别核心矛盾，给出分阶段演进路线。
+- [1. System Evolution Plan (Architecture + Contradictions + ADRs + Roadmap)](#1-system-evolution-plan)
+- [2. User Trading Notes (Trading Insights and Live-Trading Rules)](#2-user-trading-notes)
+- [3. Live Execution and Risk-Control Rules (Non-Negotiable Iron Rules)](#3-live-execution-and-risk-control-rules)
+- [4. Advantages and Limitations of Quant (4 Pairs of Reflections)](#4-advantages-and-limitations-of-quant)
+- [5. Strategy Lifecycle: Freshness, Decay, Elegy and Evolution](#5-strategy-lifecycle-freshness-decay-elegy-and-evolution)
 
 ---
 
-## 一、当前架构总结
+<a id="1-system-evolution-plan"></a>
+# Quant System Evolution Plan
+
+> Based on an in-depth review of the current architecture + a survey of external dependencies, this identifies the core contradictions and gives a phased evolution roadmap.
+
+---
+
+## I. Current Architecture Summary
 
 ```
-┌── 数据层 ────────────────────────────────────────────┐
-│  JoinQuant (聚宽) ──jqdatasdk──▶ SQLite (按指数分库)   │
+┌── Data layer ────────────────────────────────────────┐
+│  JoinQuant ──jqdatasdk──▶ SQLite (one DB per index)  │
 │  scripts/jq_bulk_sync_smallcap.py                    │
 │  scripts/run_tomorrow_sync.sh                        │
 └──────────────────────────────────────────────────────┘
          │
          ▼
-┌── 分析层 ────────────────────────────────────────────┐
-│  quant/backtest/engine.py    回测引擎                 │
-│  quant/stock_strategy/       9 个策略（生产用1个）      │
-│  quant/tools/optimize.py     网格搜索 + 前向验证       │
-│  quant/tools/vectorbt_optimize.py  快速动量预筛选      │
+┌── Analysis layer ────────────────────────────────────┐
+│  quant/backtest/engine.py    Backtest engine         │
+│  quant/stock_strategy/       9 strategies (1 live)   │
+│  quant/tools/optimize.py     Grid search + fwd test  │
+│  quant/tools/vectorbt_optimize.py Momentum prefilter │
 └──────────────────────────────────────────────────────┘
          │
          ▼
-┌── 执行层 ────────────────────────────────────────────┐
+┌── Execution layer ───────────────────────────────────┐
 │  main.py --mode live-auto                            │
-│  quant/live/daemon.py       实盘守护进程              │
+│  quant/live/daemon.py        Live-trading daemon     │
 │  quant/execution/qmt_http_broker.py  ──HTTP──▶       │
 │                                                     │
 │  ┌──── Windows 11 ──────────────────────────┐       │
@@ -50,94 +51,94 @@
 └──────────────────────────────────────────────────────┘
 ```
 
-**现状评估**：架构完整、模块化好、文档齐全。核心风险在外部依赖（MiniQMT 淘汰、JQ 配额）和策略演进能力。
+**Current assessment**: The architecture is complete, modular and well documented. The core risks are external dependencies (MiniQMT being phased out, JQ quota) and the ability to evolve strategies.
 
 ---
 
-## 二、核心矛盾与权衡
+## II. Core Contradictions and Trade-offs
 
-### 矛盾 1：GitHub Actions 周期驱动 vs Windows QMT 执行
+### Contradiction 1: GitHub Actions Scheduled Triggers vs Windows QMT Execution
 
-| 维度 | 分析 |
+| Dimension | Analysis |
 |------|------|
-| **矛盾本质** | TODO 期望用 GitHub Actions 周期驱动交易，但 QMT/MiniQMT 是 Windows GUI 程序，不适合 CI 环境 |
-| **为什么不能在 GitHub Actions 跑 QMT** | 1) 券商账号密码不能放 CI；2) QMT 登录需要 GUI 交互；3) 网络环境（券商 VPN/专线）不可控；4) 安全合规风险 |
-| **权衡结论** | **GitHub Actions ≠ 执行环境。它是编排层。** |
+| **Nature of the contradiction** | The TODO expects GitHub Actions to drive trading on a schedule, but QMT/MiniQMT are Windows GUI programs and are unsuitable for a CI environment |
+| **Why QMT cannot run on GitHub Actions** | 1) Broker account credentials must not be put in CI; 2) QMT login requires GUI interaction; 3) The network environment (broker VPN/dedicated line) is not controllable; 4) Security and compliance risk |
+| **Trade-off conclusion** | **GitHub Actions ≠ an execution environment. It is an orchestration layer.** |
 
-**推荐分工**：
+**Recommended division of labor**:
 
 ```
-GitHub Actions (云端)                 本地机器 (Windows/Linux)
+GitHub Actions (cloud)              Local machine (Windows/Linux)
 ┌──────────────────────┐            ┌──────────────────────────┐
-│ 定时触发 (schedule)   │            │                          │
-│ JQ 数据同步 (盘后)     │            │ 盘中实时行情 (QMT)        │
-│ 回测验证 (参数漂移检测) │            │ 实盘交易执行              │
-│ 因子分析 + 信号生成    │            │ 风控熔断                  │
-│ 策略参数自动优化       │            │ 日终报告                  │
-│ 异常告警              │            │                          │
+│ Schedule trigger     │            │                          │
+│ JQ data sync (EOD)   │            │ Intraday quotes (QMT)    │
+│ Backtest drift check │            │ Live trade execution     │
+│ Factor + signal gen  │            │ Risk circuit breaker     │
+│ Auto param tuning    │            │ End-of-day report        │
+│ Anomaly alerts       │            │                          │
 └──────┬───────────────┘            └──────────────────────────┘
        │                                      ▲
-       │  git push 信号/参数                   │
+       │  git push signals/params             │
        └──────────────────────────────────────┘
-              git pull (本地拉取)
+              git pull (on the local machine)
 ```
 
-### 矛盾 2：MiniQMT 长期可行性
+### Contradiction 2: Long-Term Viability of MiniQMT
 
-| 维度 | 分析 |
+| Dimension | Analysis |
 |------|------|
-| **现状** | 国金证券目前仍支持 MiniQMT，门槛低 |
-| **风险** | 至少一家券商已公告 2026 年停止 MiniQMT 新申请，存量用户后续也将逐步停止 |
-| **好消息** | XtQuant API 在 MiniQMT 和 QMT 之间是**兼容的**——QMT 全功能版同样提供 `xtdata` + `xttrader` |
-| **权衡结论** | **保持当前 MiniQMT 网关，但要准备好 QMT 降级路径。** |
+| **Current status** | Guojin Securities still supports MiniQMT today, with a low entry barrier |
+| **Risk** | At least one broker has announced it will stop accepting new MiniQMT applications in 2026, and existing users will also be phased out gradually afterwards |
+| **Good news** | The XtQuant API is **compatible** between MiniQMT and QMT — the full-featured QMT edition likewise provides `xtdata` + `xttrader` |
+| **Trade-off conclusion** | **Keep the current MiniQMT gateway, but have a QMT fallback path ready.** |
 
-**迁移路径（如果需要）**：
+**Migration path (if needed)**:
 
 ```
-当前: Linux ──HTTP──▶ MiniQMT (Windows)
-未来: Linux ──HTTP──▶ QMT API Server (Windows)
+Now:  Linux ──HTTP──▶ MiniQMT (Windows)
+Next: Linux ──HTTP──▶ QMT API Server (Windows)
                       │
-                      └── QMT 全功能版同样支持 xtquant Python API
-                          只需调整 xtquant_gateway 的连接方式
+                      └── The full-featured QMT edition also supports the xtquant Python API
+                          only the connection method of xtquant_gateway needs adjusting
 ```
 
-**建议**：在 `xtquant_gateway` 中增加对 QMT 全功能版（非极简模式）的连接支持，作为 fallback。两种模式的 `xtquant` API 是相同的，差异仅在登录/初始化环节。
+**Recommendation**: add support in `xtquant_gateway` for connecting to the full-featured QMT edition (non-lite mode) as a fallback. The `xtquant` API is identical in both modes; the only difference is in the login/initialization step.
 
-### 矛盾 3：策略简单 vs 策略复杂（过拟合）
+### Contradiction 3: Simple Strategies vs Complex Strategies (Overfitting)
 
-| 维度 | 分析 |
+| Dimension | Analysis |
 |------|------|
-| **矛盾本质** | 历史数据过度优化 → 过拟合 → 实盘失效。但简单策略又不够好。 |
-| **当前做法** | 9 个策略（含新增 `gbm_multifactor` MVP），生产只用 1 个（`csi1000_enhanced`）；使用 regime switch 做自适应 |
-| **问题** | regime switch 是静态规则（`breadth > 0.60 → risk_on`），不随市场结构变化而演进 |
+| **Nature of the contradiction** | Over-optimizing on historical data → overfitting → failure in live trading. But simple strategies are not good enough either. |
+| **Current approach** | 9 strategies (including the newly added `gbm_multifactor` MVP), with only 1 used in production (`csi1000_enhanced`); a regime switch provides adaptation |
+| **Problem** | The regime switch is a static rule (`breadth > 0.60 → risk_on`) and does not evolve as market structure changes |
 
-**权衡结论：策略要简单，但验证要严格，自适应要在线。**
+**Trade-off conclusion: strategies must be simple, validation must be strict, and adaptation must be online.**
 
 ```
-简单策略 + 严格验证 + 在线微调
-   ▲            ▲            ▲
-   │            │            └── 在线学习（参数缓慢漂移）
-   │            └── walk-forward 验证（不是静态回测）
-   └── 策略逻辑 ≤3 个核心因子
+Simple strategy + strict validation + online fine-tuning
+   ▲                  ▲                  ▲
+   │                  │                  └── Online learning (parameters drift slowly)
+   │                  └── walk-forward validation (not a static backtest)
+   └── Strategy logic ≤3 core factors
 ```
 
-| 原则 | 具体做法 |
+| Principle | Practice |
 |------|---------|
-| **策略简单** | 每个策略 ≤3 个核心因子，逻辑可解释 |
-| **验证严格** | 必须通过 walk-forward（滚动窗口）验证，不能只看全样本回测 |
-| **在线微调** | 使用在线学习（如 exponentiated gradient）让参数随市场缓慢漂移 |
-| **集成而非堆叠** | 多个简单策略的集成（ensemble）优于一个复杂策略 |
-| **定期退役** | 每个策略有生命周期，定期评估是否失效，失效就退役 |
+| **Simple strategies** | At most 3 core factors per strategy, with explainable logic |
+| **Strict validation** | Must pass walk-forward (rolling-window) validation; do not rely on full-sample backtests alone |
+| **Online fine-tuning** | Use online learning (e.g. exponentiated gradient) to let parameters drift slowly with the market |
+| **Ensemble, not stacking** | An ensemble of several simple strategies beats one complex strategy |
+| **Periodic retirement** | Every strategy has a lifecycle; evaluate periodically whether it has stopped working, and retire it if so |
 
-### 矛盾 4：数据本地化 vs 多机器同步
+### Contradiction 4: Local Data vs Multi-Machine Sync
 
-| 维度 | 分析 |
+| Dimension | Analysis |
 |------|------|
-| **矛盾本质** | SQLite 数据库（几百 MB～几 GB）不适合 git，但需要在多台电脑工作 |
-| **权衡结论** | **代码同步用 git，数据同步用脚本。** |
+| **Nature of the contradiction** | SQLite databases (hundreds of MB to several GB) are not suitable for git, but work must happen on multiple computers |
+| **Trade-off conclusion** | **Sync code with git, sync data with scripts.** |
 
 ```
-git 管理（轻量）                    脚本管理（重量）
+Git-managed (lightweight)        Script-managed (heavyweight)
 ┌─────────────────┐              ┌─────────────────────┐
 │ *.py             │              │ data/runtime/*.db    │
 │ *.toml           │              │ data/archive/*.db    │
@@ -147,391 +148,528 @@ git 管理（轻量）                    脚本管理（重量）
 └─────────────────┘              └─────────────────────┘
 ```
 
-**每台机器的数据初始化**：运行一次 `scripts/jq_bulk_sync_smallcap.py` 从 JQ 拉取全量数据，之后每天增量同步。
+**Data initialization on each machine**: run `scripts/jq_bulk_sync_smallcap.py` once to pull the full dataset from JQ, then sync incrementally every day.
 
-### 矛盾 5：ML/AI Agent 何时引入
+### Contradiction 5: When to Introduce ML/AI Agents
 
-| 维度 | 分析 |
+| Dimension | Analysis |
 |------|------|
-| **TODO 诉求** | "使用机器学习、AI agent (hermes) 做数据分析、财报分析、数据闭环" |
-| **当前状态** | 无 ML，回测引擎用纯手工技术特征（MA、MACD、K线形态等） |
-| **错误路径** | 直接用 ML 模型替代现有策略 → 黑箱化 → 不可解释 → 风险不可控 |
-| **正确路径** | ML 做辅助分析（特征发现、异常检测），策略逻辑保持透明 |
+| **TODO request** | "Use machine learning and AI agents (hermes) for data analysis, financial-report analysis, and a data feedback loop" |
+| **Current state** | No ML; the backtest engine uses purely hand-crafted technical features (MA, MACD, candlestick patterns, etc.) |
+| **Wrong path** | Directly replace the existing strategies with ML models → black-boxing → unexplainable → uncontrollable risk |
+| **Right path** | Use ML for auxiliary analysis (feature discovery, anomaly detection) and keep the strategy logic transparent |
 
-**ML/AI 的合理切入点**（按优先级）：
+**Reasonable entry points for ML/AI** (by priority):
 
-1. **异常检测**（低风险、高价值）：用 ML 检测市场异常（如闪崩预警、异常放量），作为风控信号
-2. **因子发现**（中风险）：用 ML 从财报/量价中挖掘新因子，经过 walk-forward 验证后加入策略池
-3. **参数自适应**（中风险）：用在线学习微调策略参数（而非替代策略逻辑）
-4. **NLP 财报分析**（低风险）：用 AI agent 读财报文本，提取结构化信号（如管理层语气、风险提示）
+1. **Anomaly detection** (low risk, high value): use ML to detect market anomalies (e.g. flash-crash warnings, abnormal volume spikes) as risk-control signals
+2. **Factor discovery** (medium risk): use ML to mine new factors from financial reports / price-volume data, and add them to the strategy pool after walk-forward validation
+3. **Parameter adaptation** (medium risk): use online learning to fine-tune strategy parameters (rather than replace the strategy logic)
+4. **NLP financial-report analysis** (low risk): use an AI agent to read financial-report text and extract structured signals (e.g. management tone, risk warnings)
 
 ---
 
-## 三、演进路线图
+## III. Evolution Roadmap
 
-### Phase 0：加固当前架构（优先级最高，1-2 周）
+### Phase 0: Harden the Current Architecture (Highest Priority, 1-2 Weeks)
 
-**目标**：让现有系统在 MiniQMT 仍可用期间稳定跑起来，积累实盘经验。
+**Goal**: get the existing system running stably while MiniQMT is still available, and accumulate live-trading experience.
 
-| # | 任务 | 说明 |
+| # | Task | Description |
 |---|------|------|
-| 0.1 | **完成 MiniQMT 网关联调** | 确保 `live_qmt_http.toml` + `xtquant_gateway/` + Windows MiniQMT 端到端跑通 |
-| 0.2 | **建立每日运行节奏** | `run_daily_live_pipeline.sh` 在本地稳定运行（盘前同步 → 回测 → 扫描 → 实盘） |
-| 0.3 | **纸盘先行** | `dry_run = true` 先跑 1-2 周纸盘，验证信号质量 |
-| 0.4 | **补全 .gitignore** | 确保 `data/runtime/*.db`、`data/archive/*.db`、`output/`、`.env` 不进入 git |
-| 0.5 | **跨机器同步验证** | 在第二台电脑上 `git clone` + `jq_bulk_sync`，确认能跑通完整流程 |
+| 0.1 | **Complete MiniQMT gateway integration testing** | Make sure `live_qmt_http.toml` + `xtquant_gateway/` + Windows MiniQMT run end to end |
+| 0.2 | **Establish a daily run rhythm** | `run_daily_live_pipeline.sh` runs stably locally (pre-market sync → backtest → scan → live trading) |
+| 0.3 | **Paper trading first** | Run paper trading with `dry_run = true` for 1-2 weeks first to validate signal quality |
+| 0.4 | **Complete .gitignore** | Make sure `data/runtime/*.db`, `data/archive/*.db`, `output/`, and `.env` never enter git |
+| 0.5 | **Verify cross-machine sync** | On a second computer, `git clone` + `jq_bulk_sync`, and confirm the full workflow runs |
 
-### Phase 1：引入 GitHub Actions（2-4 周）
+### Phase 1: Introduce GitHub Actions (2-4 Weeks)
 
-**目标**：让 GitHub Actions 承担盘后数据同步 + 回测验证，本地只做执行。
+**Goal**: have GitHub Actions handle post-close data sync + backtest validation, with the local machine doing execution only.
 
-| # | 任务 | 说明 |
+| # | Task | Description |
 |---|------|------|
-| 1.1 | **创建 `.github/workflows/daily_sync.yml`** | 每个交易日 15:30（收盘后）触发：JQ 数据增量同步 → 推送更新后的 data 到仓库 |
-| 1.2 | **创建 `.github/workflows/backtest_check.yml`** | 每次 push 或每日触发：在最新数据上跑回测，对比基准指标，漂移超阈值则告警 |
-| 1.3 | **创建 `.github/workflows/factor_analysis.yml`** | 每周跑一次因子 IC/IR 分析，生成报告，检测因子衰减 |
-| 1.4 | **策略参数存储为 Artifact** | 优化后的参数以 JSON/Toml 形式存储在 repo 中，不依赖本地文件 |
-| 1.5 | **解决 JQ 凭据问题** | JQ 账号密码通过 GitHub Secrets 传入 CI；评估 JQ API 是否允许多 IP 登录 |
+| 1.1 | **Create `.github/workflows/daily_sync.yml`** | Triggered at 15:30 (after the close) every trading day: incremental JQ data sync → push the updated data to the repo |
+| 1.2 | **Create `.github/workflows/backtest_check.yml`** | Triggered on every push or daily: run a backtest on the latest data, compare against baseline metrics, and alert if drift exceeds the threshold |
+| 1.3 | **Create `.github/workflows/factor_analysis.yml`** | Run factor IC/IR analysis once a week, generate a report, and detect factor decay |
+| 1.4 | **Store strategy parameters as artifacts** | Optimized parameters are stored in the repo as JSON/TOML, without depending on local files |
+| 1.5 | **Solve the JQ credentials problem** | JQ account/password are passed into CI via GitHub Secrets; evaluate whether the JQ API allows logins from multiple IPs |
 
-> **注意**：GitHub Actions 免费额度有限（~2000 min/月），数据同步脚本需控制运行时间。如果 JQ 禁止多 IP 同时登录，需要改为本地同步 + Actions 只做分析。
+> **Note**: The GitHub Actions free quota is limited (~2000 min/month), so the data sync script must keep its run time under control. If JQ forbids simultaneous logins from multiple IPs, switch to local sync + Actions doing analysis only.
 
-### Phase 2：策略演进能力（4-6 周）
+### Phase 2: Strategy Evolution Capability (4-6 Weeks)
 
-**目标**：让策略具备"随市场自动微调"的能力，减少过拟合风险。
+**Goal**: give strategies the ability to "fine-tune automatically with the market" and reduce overfitting risk.
 
-| # | 任务 | 说明 |
+| # | Task | Description |
 |---|------|------|
-| 2.1 | **实现 walk-forward 回测框架** | 在现有回测引擎上增加滚动窗口训练/验证分离（如 12 个月训练 → 3 个月验证，滚动前进） |
-| 2.2 | **简化策略到核心因子** | 将 `csi1000_enhanced` 拆解，保留 ≤3 个核心因子 + 明确的经济学解释 |
-| 2.3 | **引入在线参数更新** | 使用 exponentiated gradient descent（EGD）在线更新策略权重，每天微调 ≤1% |
-| 2.4 | **策略生命周期管理** | 每个策略记录"生效时间"和"退役条件"（如连续 3 个月夏普 < 0.5 则退役） |
-| 2.5 | **集成简单策略 ensemble** | 2-3 个互补的简单策略做等权/动态加权 ensemble |
+| 2.1 | **Implement a walk-forward backtest framework** | Add rolling-window train/validation separation on top of the existing backtest engine (e.g. 12 months of training → 3 months of validation, rolling forward) |
+| 2.2 | **Simplify strategies to core factors** | Break down `csi1000_enhanced`, keeping ≤3 core factors + a clear economic rationale |
+| 2.3 | **Introduce online parameter updates** | Use exponentiated gradient descent (EGD) to update strategy weights online, fine-tuning by ≤1% per day |
+| 2.4 | **Strategy lifecycle management** | Record each strategy's "effective date" and "retirement conditions" (e.g. retire if the Sharpe ratio < 0.5 for 3 consecutive months) |
+| 2.5 | **Ensemble of simple strategies** | An equal-weight/dynamically weighted ensemble of 2-3 complementary simple strategies |
 
-### Phase 3：ML/AI 引入（6-12 周）
+### Phase 3: ML/AI Introduction (6-12 Weeks)
 
-**目标**：在策略稳定的基础上，逐步引入 ML 辅助信号。
+**Goal**: on the basis of stable strategies, gradually introduce ML auxiliary signals.
 
-| # | 任务 | 说明 |
+| # | Task | Description |
 |---|------|------|
-| 3.1 | **异常检测模块** | 用 isolation forest / LSTM-autoencoder 检测市场异常日，作为风控输入（暂停交易） |
-| 3.2 | **NLP 财报分析 Agent** | 用 hermes-agent 批量读取财报 PDF/公告，提取关键信号（盈利超预期、风险提示、行业趋势） |
-| 3.3 | **因子挖掘 pipeline** | 从财报 N 维度 + 量价特征中自动发现新因子，走 walk-forward 验证后再加入策略池 |
-| 3.4 | **数据闭环** | 实盘交易记录 → 特征存储 → 定期重新训练 → 参数更新 → 部署（完整 MLOps 循环） |
+| 3.1 | **Anomaly detection module** | Use isolation forest / LSTM-autoencoder to detect anomalous market days as a risk-control input (pause trading) |
+| 3.2 | **NLP financial-report analysis agent** | Use hermes-agent to batch-read financial-report PDFs/announcements and extract key signals (earnings beats, risk warnings, industry trends) |
+| 3.3 | **Factor mining pipeline** | Automatically discover new factors from N financial-report dimensions + price-volume features, and add them to the strategy pool only after walk-forward validation |
+| 3.4 | **Data feedback loop** | Live trading records → feature store → periodic retraining → parameter update → deployment (a complete MLOps cycle) |
 
-### Phase 4：多资产扩展（远期）
+### Phase 4: Multi-Asset Expansion (Long Term)
 
-| # | 任务 | 说明 |
+| # | Task | Description |
 |---|------|------|
-| 4.1 | **基金筛选模块** | ETF/LOF 筛选逻辑（费率、跟踪误差、流动性），复用现有回测引擎 |
-| 4.2 | **债券/可转债** | 如果 QMT 支持债券交易，在 QMT 端配置；策略参数独立管理 |
-| 4.3 | **资产配置层** | 在策略引擎上层增加股/债/基的大类配置模型（如风险平价） |
+| 4.1 | **Fund screening module** | ETF/LOF screening logic (fees, tracking error, liquidity), reusing the existing backtest engine |
+| 4.2 | **Bonds / convertible bonds** | If QMT supports bond trading, configure it on the QMT side; manage strategy parameters independently |
+| 4.3 | **Asset allocation layer** | Add a stock/bond/fund asset-class allocation model (e.g. risk parity) above the strategy engine |
 
 ---
 
-## 四、架构决策记录
+## IV. Architecture Decision Records
 
-### ADR-1：GitHub Actions 只做编排，不做执行
+### ADR-1: GitHub Actions Only Orchestrates, Never Executes
 
-- **决策**：实盘交易永远在本地机器执行，GitHub Actions 承担数据同步、回测验证、告警
-- **理由**：安全（不暴露券商凭据）、合规、QMT 无法在 CI 环境运行
-- **替代方案**：全部本地（简单但缺少自动化验证）；云服务器（成本高，QMT 仍需 Windows）
+- **Decision**: live trading is always executed on the local machine; GitHub Actions handles data sync, backtest validation, and alerting
+- **Rationale**: security (no broker credentials exposed), compliance, and QMT cannot run in a CI environment
+- **Alternatives**: everything local (simple but lacks automated validation); cloud server (expensive, and QMT still needs Windows)
 
-### ADR-2：保持 MiniQMT 网关，准备 QMT fallback
+### ADR-2: Keep the MiniQMT Gateway, Prepare a QMT Fallback
 
-- **决策**：继续使用 MiniQMT + XtQuant 网关方案，同时在 `xtquant_gateway` 中增加 QMT 全功能版兼容
-- **理由**：MiniQMT 是当前最优方案（API 灵活、Python 原生），XQuant API 在两种模式下兼容
-- **风险缓解**：如果 MiniQMT 被淘汰，迁到 QMT + API Server 模式（同 API，仅连接方式不同）
+- **Decision**: continue with the MiniQMT + XtQuant gateway approach, and add compatibility with the full-featured QMT edition in `xtquant_gateway`
+- **Rationale**: MiniQMT is the best option today (flexible API, native Python), and the XQuant API is compatible across both modes
+- **Risk mitigation**: if MiniQMT is phased out, migrate to QMT + API Server mode (same API, only the connection method differs)
 
-### ADR-3：策略要简单，验证要严格
+### ADR-3: Keep Strategies Simple, Keep Validation Strict
 
-- **决策**：每个策略 ≤3 个核心因子；必须通过 walk-forward 验证才能上线；引入在线学习微调参数
-- **理由**：过度优化 + 静态参数 = 过拟合。简单策略 + 在线适应 + 严格验证 = 长期存活
-- **反模式**：用越来越复杂的策略补偿过拟合（恶化问题）
+- **Decision**: at most 3 core factors per strategy; a strategy must pass walk-forward validation before going live; introduce online learning to fine-tune parameters
+- **Rationale**: over-optimization + static parameters = overfitting. Simple strategies + online adaptation + strict validation = long-term survival
+- **Anti-pattern**: compensating for overfitting with ever more complex strategies (makes the problem worse)
 
-### ADR-4：数据不在 git 中，用脚本重建
+### ADR-4: Data Stays Out of git and Is Rebuilt with Scripts
 
-- **决策**：`data/` 目录全部 `.gitignore`；每台机器通过 JQ 同步脚本独立获取数据
-- **理由**：SQLite 文件大、二进制、不适合 git diff；JQ 数据源统一，每台机器拉取结果一致
-- **例外**：`data/meta/` 中的成分股快照可以 git（体积小、文本化、变更少）
+- **Decision**: the whole `data/` directory is in `.gitignore`; each machine fetches data independently via the JQ sync scripts
+- **Rationale**: SQLite files are large and binary and unsuitable for git diff; the JQ data source is unified, so every machine pulls identical results
+- **Exception**: constituent-stock snapshots in `data/meta/` may be kept in git (small, text-based, rarely changed)
 
 ---
 
-## 六、实施进度（2025-07-30）
+## VI. Implementation Progress (2025-07-30)
 
-### ✅ Phase 0：加固当前架构
+### ✅ Phase 0: Harden the Current Architecture
 
-| 任务 | 状态 |
+| Task | Status |
 |------|------|
-| .gitignore 完善 | ✅ 已初始化 git 仓库，156 文件提交，data/ 和 .env 排除 |
-| 系统健康验证 | ✅ `final_freeze_2025.toml` 回测通过：年化 39.8%，超额 +10.2%，Sharpe 2.02 |
-| quota_blocked | ⏸ JQ 配额问题，非代码问题，需在交易日验证 |
+| .gitignore completed | ✅ git repository initialized, 156 files committed, data/ and .env excluded |
+| System health check | ✅ `final_freeze_2025.toml` backtest passed: annualized return 39.8%, excess return +10.2%, Sharpe 2.02 |
+| quota_blocked | ⏸ JQ quota issue, not a code problem; needs to be verified on a trading day |
 
-### ✅ Phase 1：引入 GitHub Actions
+### ✅ Phase 1: Introduce GitHub Actions
 
-| 任务 | 状态 |
+| Task | Status |
 |------|------|
-| `.github/workflows/backtest_check.yml` | ✅ 每日回测 + 漂移告警，push + schedule 触发 |
-| `.github/workflows/factor_analysis.yml` | ✅ 每周因子 IC/IR 分析，周六运行 |
-| `.github/workflows/data_sync.yml` | ✅ 手动触发 mode consistency + JQ 同步 |
-| `.github/workflows/jq_signin.yml` | ✅ 每日聚宽自动签到领积分（Playwright + 验证码识别） |
-| 数据外置 | ✅ `data/` → symlink → `~/HHD/stock/data/`（机械硬盘） |
+| `.github/workflows/backtest_check.yml` | ✅ Daily backtest + drift alerts, triggered by push + schedule |
+| `.github/workflows/factor_analysis.yml` | ✅ Weekly factor IC/IR analysis, runs on Saturday |
+| `.github/workflows/data_sync.yml` | ✅ Manually triggered mode consistency + JQ sync |
+| `.github/workflows/jq_signin.yml` | ✅ Daily automatic JoinQuant check-in to claim credits (Playwright + captcha recognition) |
+| Data moved out of the repo | ✅ `data/` → symlink → `~/HHD/stock/data/` (mechanical hard drive) |
 
-### ✅ 纸盘验证
+### ✅ Paper-Trading Validation
 
-| 步骤 | 状态 |
+| Step | Status |
 |------|------|
-| 纸盘配置 | ✅ `config/live_paper.toml`：broker_type=paper, dry_run=true |
-| Pipeline 端到端 | ✅ `run_daily_live_pipeline.sh` 跑通（prepare-live-plan + archive） |
-| .gitignore | ✅ data/、output/*、.env、uv.lock 已排除 |
+| Paper-trading config | ✅ `config/live_paper.toml`: broker_type=paper, dry_run=true |
+| Pipeline end to end | ✅ `run_daily_live_pipeline.sh` runs through (prepare-live-plan + archive) |
+| .gitignore | ✅ data/, output/*, .env, uv.lock are excluded |
 
-### ✅ Phase 2：策略演进能力
+### ✅ Phase 2: Strategy Evolution Capability
 
-| 任务 | 模块 | 说明 |
+| Task | Module | Description |
 |------|------|------|
-| walk-forward 回测框架 | `quant/tools/walk_forward.py` | 滚动窗口训练/验证，超参数优化（top_k、止损、入场间隔），过拟合检测（参数稳定性 + 超额持续性） |
-| 简化策略 | `quant/stock_strategy/simple_3factor.py` | 3 因子策略（基本面 + 动量 + 稳定性）和 2 因子基线（质量 + 动量），已注册到 registry |
-| 在线参数更新 | `quant/stock_strategy/online_learning.py` | EGD 算法，基于 rank IC 梯度每日微调因子权重，持久化到 JSON |
-| 策略生命周期 | `quant/stock_strategy/lifecycle.py` | active → watch → retired 三级状态机，基于滚动 Sharpe/超额/回撤自动退役 |
+| walk-forward backtest framework | `quant/tools/walk_forward.py` | Rolling-window training/validation, hyperparameter optimization (top_k, stop-loss, entry interval), overfitting detection (parameter stability + excess-return persistence) |
+| Simplified strategies | `quant/stock_strategy/simple_3factor.py` | 3-factor strategy (fundamentals + momentum + stability) and a 2-factor baseline (quality + momentum), registered in the registry |
+| Online parameter updates | `quant/stock_strategy/online_learning.py` | EGD algorithm that fine-tunes factor weights daily based on the rank IC gradient, persisted to JSON |
+| Strategy lifecycle | `quant/stock_strategy/lifecycle.py` | Three-state machine active → watch → retired, with automatic retirement based on rolling Sharpe/excess return/drawdown |
 
-### ⏳ 待完成
+### ⏳ To Do
 
-- [ ] MiniQMT 网关在 Windows 实机联调（需开通券商量化账号）
-- [ ] `live_qmt_http.toml` 填入 gateway token 后切到实盘纸盘模式
-- [ ] GitHub Actions 首次运行验证（观察 jq_signin 是否正常）
-- [ ] ML 异常检测模块
-- [ ] NLP 财报分析 Agent (hermes)
-- [ ] 数据闭环 MLOps
-
----
-
-## 七、下一步行动
-
-1. [ ] **开通券商量化账号**（国金证券，QMT/MiniQMT）
-2. [ ] Windows 实机安装 MiniQMT + 启动 `xtquant_gateway`
-3. [ ] 将 `live_qmt_http.toml` 的 `broker_type` 改为 `qmt_http`，填入 token
-4. [ ] 在 GitHub 上观察 `jq_signin` workflow 首次运行结果
-5. [ ] 每周 `git pull` 同步代码 + 策略更新
+- [ ] MiniQMT gateway integration testing on a real Windows machine (requires enabling a broker quant account)
+- [ ] After filling the gateway token into `live_qmt_http.toml`, switch to live-connected paper-trading mode
+- [ ] Verify the first GitHub Actions run (check whether jq_signin works normally)
+- [ ] ML anomaly detection module
+- [ ] NLP financial-report analysis agent (hermes)
+- [ ] Data feedback loop MLOps
 
 ---
 
-<a id="2-用户交易笔记"></a>
+## VII. Next Actions
 
-# 用户交易笔记（恢复版）
-
-> 说明：本文件根据你本次会话提供的原始资料整理，尽量保持原意并结构化，便于后续策略实现、复盘和风险审计。
-
-## 一、交易背景与阶段
-
-- 市场认知：A 股散户密集，小盘/小微盘波动更大，机会与风险并存。
-- 个人路径：
-  - 2023 春节 - 2023.11：从接触到实盘，约 8 个月
-  - 2023.11 - 2024.4：从实盘到辞职专职，约 6 个月
-  - 当前时间：2026.3
-  - 当前资金：约 2000 万
-- 经验教训：早期价值投资亏损严重，单看 PE/PB 不足以应对市场行为。
-
-## 二、市场分层认知
-
-- 沪深 300：机构权重高、波动相对平稳。
-- 中证 500 / 1000 / 小微盘：散户参与更高、波动更大、潜在超额更明显。
-- 结论：小盘股策略必须强化执行与风控，不可只看“纸面因子收益”。
-
-## 三、模拟盘与实盘差异
-
-## 1) 模拟盘
-
-- 用全市场分层观察（最大市值 10%、最小市值 10%），周期调仓，比较大小盘盈利特征。
-
-## 2) 实盘
-
-- 核心问题不是“信号好不好”，而是“能不能成交、成交代价多大”。
-- 必须处理：
-  - 成交量/流动性约束
-  - 大单冲击
-  - 滑点
-  - 撤单与追单策略
-
-## 四、执行层关键原则
-
-## 1) 滑点是利润杀手（尤其小盘）
-
-- 回测必须扣除严格滑点（小盘建议 0.1%~0.3% 级别压力测试）。
-- 扣除后仍有收益，才有实盘意义。
-
-## 2) 5 分钟超时撤单机制
-
-- 挂单 5 分钟未成交，通常代表市场状态已变化，应触发重评估。
-- 被动策略：以撤单重挂为主，避免被动穿透。
-- 主动策略：行情强趋势下可改为更激进执行（避免踏空）。
-- 结论：时间本身是风险因子，超时撤单是必要模块。
-
-## 3) TWAP / VWAP 拆单
-
-- 大单拆小单，控制冲击成本和可成交性。
-- 与 ADV/盘口深度约束联动，防止单笔过量冲击。
-
-## 五、对量化基金与拥挤交易的看法
-
-- 不盲目跟风“明星量化基金”。
-- 核心风险：策略拥挤后 alpha 衰减，资金博弈结构改变。
-- 结论：窗口期有限，必须重视风险成本与执行质量。
-
-## 六、当前实盘方法论（机械执行）
-
-- 只在“波动率适中”条件开仓。
-- 交易级别偏中低频（1H/4H 视角，执行更稳定）。
-- 单笔亏损控制：
-  - 单笔固定风险不超过 1%
-  - 单只最大亏损 5%
-  - 连续亏损触发暂停
-- 盈利采用移动止损保护。
-
-## 七、仓位铁律
-
-- 单笔最大风险：<= 2%
-- 总仓位：<= 50%
-- 严禁亏损摊平加仓
-- 连续亏损 2 天，停手 1 天
-
-## 八、公募持仓校验建议
-
-- 参考渠道：天天基金网、东方财富网（基金重仓股）
-- 校验方式：将公募前 20 重仓股输入模型，观察模型打分是否一致、是否存在系统偏差。
-
-## 九、系统设计导向
-
-- 短期（试用期）：充分利用 JQ 可用窗口做策略评估与参数筛选。
-- 中长期（实盘）：QMT 行情+交易数据持续沉淀到本地库，用于滚动复评。
+1. [ ] **Enable a broker quant account** (Guojin Securities, QMT/MiniQMT)
+2. [ ] Install MiniQMT on a real Windows machine + start `xtquant_gateway`
+3. [ ] Change `broker_type` in `live_qmt_http.toml` to `qmt_http` and fill in the token
+4. [ ] Check the result of the first run of the `jq_signin` workflow on GitHub
+5. [ ] Run `git pull` weekly to sync code + strategy updates
 
 ---
 
-<a id="3-实盘执行与风控规则"></a>
+<a id="2-user-trading-notes"></a>
 
-# 实盘执行与风控规则（恢复版）
+# User Trading Notes (Recovered Version)
 
-## 一、核心目标
+> Note: This file was compiled from the raw material you provided in this session, keeping the original meaning as far as possible and structuring it for later strategy implementation, post-trade review, and risk audits.
 
-- 把“可回测收益”转化为“可成交、可持续”的真实收益。
-- 在小盘/小微盘环境下优先控制执行风险与流动性风险。
+## I. Trading Background and Stages
 
-## 二、执行层必备机制
+- Market view: the A-share market is dense with retail investors; small-cap/micro-cap stocks are more volatile, with opportunity and risk coexisting.
+- Personal path:
+  - Spring Festival 2023 - 2023.11: from first exposure to live trading, about 8 months
+  - 2023.11 - 2024.4: from live trading to quitting the job and trading full time, about 6 months
+  - Current date: 2026.3
+  - Current capital: about 20 million (CNY)
+- Lessons learned: early value investing lost heavily; looking at PE/PB alone is not enough to cope with market behavior.
 
-## 1) 拆单执行
+## II. Market Segmentation View
 
-- 使用 TWAP/VWAP 拆单器，把大单拆小单跨时间片执行。
-- 每个切片受流动性约束（ADV/成交额比例/盘口深度）。
+- CSI 300: heavily institutional, relatively stable volatility.
+- CSI 500 / 1000 / micro-cap: higher retail participation, higher volatility, more pronounced potential excess return.
+- Conclusion: small-cap strategies must strengthen execution and risk control; do not look only at “paper factor returns”.
 
-## 2) 滑点控制
+## III. Paper Trading vs Live Trading Differences
 
-- 回测端必须预扣滑点成本。
-- 实盘端动态记录成交偏离，用于参数自适应。
+## 1) Paper Trading
 
-## 3) 超时撤单与追价
+- Observe the whole market in layers (largest 10% by market cap, smallest 10% by market cap), rebalance periodically, and compare the profitability characteristics of large and small caps.
 
-- 默认规则：挂单超过 5 分钟未成交，触发撤单+重评估。
-- 被动执行模式：重挂限价，控制冲击。
-- 主动执行模式：趋势确认后可提高成交优先级（防踏空）。
+## 2) Live Trading
 
-## 三、仓位与风险铁律
+- The core question is not “is the signal good” but “can it be filled, and how costly is the fill”.
+- Must be handled:
+  - Trading volume/liquidity constraints
+  - Large-order impact
+  - Slippage
+  - Order cancellation and order-chasing strategies
 
-- 单笔最大风险：<= 2%
-- 总仓位：<= 50%
-- 单只最大亏损阈值：5%
-- 连亏 2 天：强制停手 1 天
-- 禁止亏损摊平加仓
+## IV. Key Execution-Layer Principles
 
-## 四、监控层规则
+## 1) Slippage Is a Profit Killer (Especially for Small Caps)
 
-- 日频层：选股与调仓
-- 盘中层：持仓分钟监控（快跌/回撤/止损触发优先卖出）
-- 收盘层：归档 + 日报 + 风险复盘
+- Backtests must deduct strict slippage (for small caps, stress testing at the 0.1%~0.3% level is recommended).
+- Only if there is still a profit after the deduction does live trading make sense.
 
-## 五、交易后复盘字段（建议）
+## 2) 5-Minute Order-Timeout Cancellation Mechanism
 
-- 下单时间、成交时间、订单状态
-- 计划价格 vs 成交均价（滑点）
-- 取消原因、追价次数
-- 成交量占当日成交量比例
-- 风险触发标记（止损/回撤/超时）
+- An order unfilled after 5 minutes usually means the market state has changed and should trigger a re-evaluation.
+- Passive strategy: mainly cancel and re-place, to avoid being passively run through by the price.
+- Active strategy: in a strongly trending market, switch to more aggressive execution (to avoid missing the move).
+- Conclusion: time itself is a risk factor, so order-timeout cancellation is a necessary module.
 
-## 六、QMT 实盘迁移原则
+## 3) TWAP / VWAP Order Splitting
 
-- 先 PaperBroker 全链路验证
-- 再 QMT 真实接口对接（账户/持仓/下单/撤单/回报）
-- 每次升级先 dry-run 再真仓
+- Split large orders into small ones to control impact cost and fillability.
+- Linked with ADV/order-book-depth constraints to prevent excessive impact from any single order.
+
+## V. Views on Quant Funds and Crowded Trades
+
+- Do not blindly follow “star quant funds”.
+- Core risk: alpha decays once a strategy becomes crowded, and the structure of the capital game changes.
+- Conclusion: the window of opportunity is limited, so risk cost and execution quality must be taken seriously.
+
+## VI. Current Live-Trading Methodology (Mechanical Execution)
+
+- Open positions only under “moderate volatility” conditions.
+- Trading timeframe leans medium-to-low frequency (1H/4H view, more stable execution).
+- Per-trade loss control:
+  - Fixed risk per trade does not exceed 1%
+  - Maximum loss per stock 5%
+  - Consecutive losses trigger a pause
+- Profits are protected with a trailing stop-loss.
+
+## VII. Position-Sizing Iron Rules
+
+- Maximum risk per trade: <= 2%
+- Total position: <= 50%
+- Averaging down on losing positions is strictly forbidden
+- After 2 consecutive losing days, stop trading for 1 day
+
+## VIII. Suggestion: Validate Against Mutual-Fund Holdings
+
+- Reference sources: Tiantian Fund (fund website), East Money (top fund holdings)
+- Validation method: feed the top 20 holdings of mutual funds into the model and check whether the model's scores are consistent and whether there is systematic bias.
+
+## IX. System Design Direction
+
+- Short term (trial period): make full use of the available JQ window for strategy evaluation and parameter screening.
+- Medium to long term (live trading): continuously accumulate QMT market + trading data into a local database for rolling re-evaluation.
 
 ---
 
-<a id="4-量化的优势与局限"></a>
+<a id="3-live-execution-and-risk-control-rules"></a>
 
-# 量化交易的优势与局限
+# Live Execution and Risk-Control Rules (Recovered Version)
 
-> 本文档源自一份基础量化教材的对比表（"量化的优势 vs 量化的局限"），并结合本仓库的实际情况做延伸。
-> 用途：在写策略、做参数搜索、上实盘之前，先照一下镜子。
+## I. Core Goals
 
-## 一、优势与局限对照表
+- Turn “backtestable returns” into real returns that are “fillable and sustainable”.
+- In small-cap/micro-cap conditions, prioritize controlling execution risk and liquidity risk.
 
-| 优势 | 局限 |
+## II. Essential Execution-Layer Mechanisms
+
+## 1) Order-Splitting Execution
+
+- Use a TWAP/VWAP order splitter to break large orders into small ones executed across time slices.
+- Each slice is subject to liquidity constraints (ADV / trading-value ratio / order-book depth).
+
+## 2) Slippage Control
+
+- The backtest side must deduct slippage cost up front.
+- The live side records fill deviations dynamically, for parameter adaptation.
+
+## 3) Order-Timeout Cancellation and Price Chasing
+
+- Default rule: an order unfilled for more than 5 minutes triggers cancellation + re-evaluation.
+- Passive execution mode: re-place the limit order to control impact.
+- Active execution mode: after the trend is confirmed, fill priority may be raised (to avoid missing the move).
+
+## III. Position and Risk Iron Rules
+
+- Maximum risk per trade: <= 2%
+- Total position: <= 50%
+- Maximum loss threshold per stock: 5%
+- 2 consecutive losing days: forced 1-day halt
+- Averaging down on losing positions is prohibited
+
+## IV. Monitoring-Layer Rules
+
+- Daily layer: stock selection and rebalancing
+- Intraday layer: minute-level monitoring of holdings (rapid drops / drawdowns / stop-loss triggers sell first)
+- Close layer: archiving + daily report + risk review
+
+## V. Post-Trade Review Fields (Recommended)
+
+- Order time, fill time, order status
+- Planned price vs average fill price (slippage)
+- Cancellation reason, number of price chases
+- Filled volume as a share of the day's trading volume
+- Risk-trigger flags (stop-loss / drawdown / timeout)
+
+## VI. Principles for Migrating to QMT Live Trading
+
+- First validate the whole pipeline with PaperBroker
+- Then integrate with the real QMT interface (account / holdings / place order / cancel order / reports)
+- For every upgrade, dry-run first, then real positions
+
+---
+
+<a id="4-advantages-and-limitations-of-quant"></a>
+
+# Advantages and Limitations of Quantitative Trading
+
+> This document originates from a comparison table in a basic quant textbook ("advantages of quant vs limitations of quant"), extended with this repo's actual circumstances.
+> Purpose: take a look in the mirror before writing a strategy, running a parameter search, or going live.
+
+## I. Advantages vs Limitations Comparison Table
+
+| Advantages | Limitations |
 |------|------|
-| **纪律性**：严格执行，不受情绪干扰 | **黑天鹅**：极端行情下模型失效 |
-| **可回测**：历史数据可以验证策略有效性 | **过拟合**：历史不代表未来 |
-| **可复制**：同一策略可应用于多个标的 | **同质化**：策略趋同导致拥挤交易 |
-| **高效率**：程序 24 小时监控 | **滞后性**：对突发事件反应慢 |
+| **Discipline**: strict execution, free from emotional interference | **Black swans**: models fail in extreme markets |
+| **Backtestable**: historical data can validate a strategy's effectiveness | **Overfitting**: the past does not represent the future |
+| **Replicable**: the same strategy can be applied to many instruments | **Homogenization**: converging strategies lead to crowded trades |
+| **High efficiency**: programs monitor 24 hours a day | **Lag**: slow reaction to sudden events |
 
-## 二、每一条对应到本仓库的具体做法
+## II. How Each Item Maps to Concrete Practice in This Repo
 
-### 1) 纪律性 vs 黑天鹅
+### 1) Discipline vs Black Swans
 
-- 纪律性：
-  - `quant/execution/risk_guard.py` + `[strategy]` 里的止损/移动止损/仓位上限，是硬编码的执行纪律。
-  - 连亏 2 天暂停 1 天（`pause_after_consecutive_loss_days = 2` / `pause_after_loss_pause_days = 1`）。
-- 黑天鹅防护：
-  - 崩盘阈值：`crash_ret5_threshold = -0.08`、`crash_ret20_threshold = -0.14`、`crash_breadth_threshold = 0.25`。
-  - 触发后进入 `crash_cooldown_days` 冷却空仓期。
-  - 单笔最大损失 `max_single_position_loss_pct = 0.05`；总敞口封顶 `max_total_exposure_pct`。
-- **仍然承认**：极端行情（比如政策一夜出台、指数一日 -10%）任何量化模型都会失效。**风控只能减损，不能对冲这种事件**。这就是为什么必须留有现金和低相关资产。
+- Discipline:
+  - The stop-loss / trailing stop-loss / position caps in `quant/execution/risk_guard.py` + `[strategy]` are the hard-coded execution discipline.
+  - Pause 1 day after 2 consecutive losing days (`pause_after_consecutive_loss_days = 2` / `pause_after_loss_pause_days = 1`).
+- Black-swan protection:
+  - Crash thresholds: `crash_ret5_threshold = -0.08`, `crash_ret20_threshold = -0.14`, `crash_breadth_threshold = 0.25`.
+  - Once triggered, enter a cash-only cooldown period of `crash_cooldown_days`.
+  - Maximum loss per position `max_single_position_loss_pct = 0.05`; total exposure is capped by `max_total_exposure_pct`.
+- **Still must admit**: in extreme markets (e.g. a policy announced overnight, an index falling 10% in a single day) any quant model will fail. **Risk control can only limit losses; it cannot hedge such events**. This is why you must hold cash and low-correlation assets.
 
-### 2) 可回测 vs 过拟合
+### 2) Backtestable vs Overfitting
 
-- 可回测：`main.py --mode backtest`；输出 `output/backtest_metrics.json` + `backtest_equity_curve.csv` + `backtest_trades.csv`。
-- 过拟合防护：
-  - `main.py --mode walk-forward` 做滚动训练/验证分离（`quant/tools/walk_forward.py`）
-  - `main.py --mode factor-analyze` 看单因子 IC/IR 是否衰减
-  - ADR-3：每个策略 ≤ 3 个核心因子（见 `docs/10_foundation/01_evolution_plan.md`）
-- **仍然承认**：任何回测都是“过去 vs 未来”的样本外冒险，最终验证只能靠纸盘和小资金实盘。
+- Backtestable: `main.py --mode backtest`; outputs `output/backtest_metrics.json` + `backtest_equity_curve.csv` + `backtest_trades.csv`.
+- Overfitting protection:
+  - `main.py --mode walk-forward` performs rolling train/validation separation (`quant/tools/walk_forward.py`)
+  - `main.py --mode factor-analyze` checks whether single-factor IC/IR is decaying
+  - ADR-3: at most 3 core factors per strategy (see `docs/10_foundation/01_evolution_plan.md`)
+- **Still must admit**: any backtest is an out-of-sample gamble of “past vs future”; the final validation can only come from paper trading and small-capital live trading.
 
-### 3) 可复制 vs 同质化
+### 3) Replicable vs Homogenization
 
-- 可复制：截面策略只需换股票池（沪深300/中证500/中证1000/中证2000），因子逻辑不用改（见 `docs/20_strategy/01_cross_section_playbook.md`）。
-- 同质化：
-  - **风险**：小市值 + 低估值 + 反转 + 高 ROE 这套多因子是全市场最拥挤的赛道之一，Alpha 会被消耗。
-  - 应对：
-    - 保持策略简单，可解释性强，便于识别自己的 alpha 是否还在
-    - 定期做 IC/IR 分析，看因子有没有衰减
-    - `docs/60_regulation/01_quant_regulation_playbook.md`：随监管收紧同步调整交易节奏
+- Replicable: a cross-sectional strategy only needs a different stock universe (CSI 300 / CSI 500 / CSI 1000 / CSI 2000); the factor logic does not change (see `docs/20_strategy/01_cross_section_playbook.md`).
+- Homogenization:
+  - **Risk**: the multi-factor combination of small market cap + low valuation + reversal + high ROE is one of the most crowded tracks in the whole market, and alpha will be eroded.
+  - Response:
+    - Keep strategies simple and highly explainable, so it is easy to tell whether your own alpha is still there
+    - Run IC/IR analysis periodically to see whether factors are decaying
+    - `docs/60_regulation/01_quant_regulation_playbook.md`: adjust trading pace in step with tightening regulation
 
-### 4) 高效率 vs 滞后性
+### 4) High Efficiency vs Lag
 
-- 高效率：`main.py --mode live-daemon` + `--mode live-auto`；`quant/live/daemon.py` 全天候监控。
-- 滞后性：
-  - 日频策略在盘中重大新闻发生时反应慢。
-  - `quant/live/intraday_monitor.py` 提供分钟级卖出监控作为部分补偿。
-  - 但**不追求做“新闻反应型策略”**——那是另一条赛道，需要低时延基础设施和信息源。
-- 未来路径（`docs/70_ai_research/01_ml_ai_integration_plan.md`）：用 NLP/Agent 读取财报公告，产生日频结构化信号，而不是追盘中新闻。
+- High efficiency: `main.py --mode live-daemon` + `--mode live-auto`; `quant/live/daemon.py` monitors around the clock.
+- Lag:
+  - A daily-frequency strategy reacts slowly when major news breaks intraday.
+  - `quant/live/intraday_monitor.py` provides minute-level sell monitoring as a partial compensation.
+  - But we **do not aim to build a “news-reaction strategy”** — that is a different track that requires low-latency infrastructure and information sources.
+- Future path (`docs/70_ai_research/01_ml_ai_integration_plan.md`): use NLP/agents to read financial reports and announcements and produce daily-frequency structured signals, rather than chasing intraday news.
 
-## 三、把这张表贴在写策略的桌子上
+## III. Put This Table on the Desk Where You Write Strategies
 
-任何时候准备加一个"更复杂"的因子、"更精细"的参数、"更花哨"的架构（RL、深度学习、缠论识别 ...），先问自己 4 个问题：
+Whenever you are about to add a "more complex" factor, a "finer" parameter, or a "fancier" architecture (RL, deep learning, Chanlun pattern recognition ...), first ask yourself 4 questions:
 
-1. **过拟合**：这个改动能通过 walk-forward 吗？
-2. **同质化**：这个因子/信号是不是市场上人人都在用？
-3. **黑天鹅**：这个改动在 2015 股灾/2016 熔断/2020 疫情/2024 春节小盘崩溃里会怎样？
-4. **滞后性**：这个改动是不是在赌"能比市场先反应"？如果是，凭什么？
+1. **Overfitting**: can this change pass walk-forward?
+2. **Homogenization**: is this factor/signal something everyone in the market is already using?
+3. **Black swans**: how would this change fare in the 2015 stock-market crash / 2016 circuit-breaker / 2020 pandemic / 2024 Spring Festival small-cap collapse?
+4. **Lag**: is this change betting on "being able to react before the market"? If so, on what basis?
 
-**任何一条答不清楚，就先不上线。**
+**If any one of them cannot be answered clearly, do not go live yet.**
 
-## 四、与仓库其他文档的关系
+## IV. Relationship to Other Documents in the Repo
 
-- 与 `10_foundation/01_evolution_plan.md` 的关系：本文是"为什么"，那份是"怎么做"。
-- 与 `10_foundation/03_risk_rulebook.md` 的关系：本文承认"量化会失效"，那份规定"失效时必须自动降损"。
-- 与 `20_strategy/*` 的关系：本文是筛选新策略的判据，那些文档是策略实现的具体规则。
+- Relationship to `10_foundation/01_evolution_plan.md`: this document is the "why"; that one is the "how".
+- Relationship to `10_foundation/03_risk_rulebook.md`: this document acknowledges that "quant will fail"; that one stipulates that "when it fails, losses must be reduced automatically".
+- Relationship to `20_strategy/*`: this document is the criterion for screening new strategies; those documents are the concrete rules for strategy implementation.
+
+---
+
+<a id="5-strategy-lifecycle-freshness-decay-elegy-and-evolution"></a>
+
+# Strategy Lifecycle: Freshness, Decay, Elegy and Evolution
+
+> Case source: `csi1000_enhanced` + `config/final_freeze_2025.toml` and its JoinQuant port `test/cc_op1.py` (validated 2025–2026).
+> Conclusion first: **some strategies were not “badly written”; they “outlived their era”. Public circulation accelerates death, but it is not the only cause.**
+
+## 5.1 Elegy: `csi1000_enhanced` / `cc_op1`
+
+**Banner**: Deified in backtest, dust out of sample
+
+**Upper couplet**: Five-factor cross-section, in-sample annualized return of forty percent, Sharpe above two, as if divinely aided
+
+**Lower couplet**: Once ported to JoinQuant, three straight losing months OOS, turnover doubled, alpha finally lost
+
+**Eulogy (three sentences)**:
+
+1. In the 2025 SQLite data you were the champion — annualized return +39.8%, excess return +10.2%, maximum drawdown only -10.1%.
+2. You missed the entire 2026 Q1 rebound, and then turned the “engine-aligned” sell rules in v1.1 into **corpse-flogging daily turnover**; commissions and slippage ate the remaining alpha.
+3. You are not the first strategy to fall on small-cap value-momentum factors, and you will not be the last; rest in peace, and let walk-forward and factor IC keep vigil over you.
+
+`test/cc_op1.py` is marked as the **elegy edition (archived)**: for reference only on “porting distortion” and “out-of-sample decay”; **it must not go live, and its parameter details must not be shared externally again**.
+
+## 5.2 Why It Got “Worse the More It Was Changed” on JoinQuant
+
+Putting the local backtest and the JoinQuant results side by side, the gap is not a single bug but **three layers stacked together**:
+
+| Layer | Symptom | Mechanism |
+|------|------|------|
+| **A. Out-of-sample regime switch** | Strong IS in 2025, OOS collapse in 2026 Q1 (see `reports/migration_check_2026.md`) | Small-cap + value + momentum faced headwinds in 2026 Q1; the strategy held conservative positions while the benchmark surged → excess return fell off a cliff |
+| **B. Porting-definition distortion** | The same parameters fail to beat the benchmark on JQ | Factor publication timing, ST/suspension filtering, limit-up/limit-down fills, and the fee model are not fully consistent with the local SQLite engine |
+| **C. v1.1 “over-alignment”** | Returns got worse after the change, and giant daily PnL bars became denser | Stuffing **daily-frequency selling** (ranking percentile 0.94, MA20 breakdown, forced liquidation on crash) into the daily-frequency script → turnover soared from the “251 trades a year” level to “over a hundred trades in half a year and still losing”, i.e. **negative-expectancy turnover** |
+
+**Three especially fatal changes in v1.1** (do not copy them verbatim in any future port):
+
+1. **Mistranslation of `SELL_RANK_PERCENTILE_THR = 0.94`**  
+   Locally, `sell_score_threshold` is used **on the holdings subset + days held + in combination with other sell rules**; the JQ version became “sell if ranked in the bottom 6% of a 400+ stock pool” → it sells almost every day, and **friction costs dominate PnL**.
+2. **Forced liquidation on crash days**  
+   Locally, after `_is_market_crash` exposure→0 comes with a state machine and a re-entry cadence; the JQ version sat in cash on the first day of the rebound → **sold at the bottom**.
+3. **Consecutive MA20 breakdowns**  
+   CSI 1000 constituents are volatile; a 2-day breakdown in a choppy market = repeated stop-outs; combined with ranking-based selling, the daily PnL chart shows **dense giant orange bars** (as seen in the screenshot).
+
+**Lesson**: the “correct logic” in the backtest engine does not equal a “line-for-line” JoinQuant script. **First verify that the factor ranking is consistent, and only then discuss sell rules; changes to sell rules must be A/B-tested on their own and must not be bundled into an “aligned edition”.**
+
+## 5.3 Were Strategies “Doomed from the Start”? Does Public Sharing Accelerate Decay?
+
+**Yes, but the causes of death need to be told apart:**
+
+| Cause of death | Common? | Case in this repo |
+|------|-------------|-----------|
+| **Overfitting** (parameters fit historical noise) | Yes | `final_freeze_2025` was excellent in 2025 and dropped to zero in 2026 Q1 → a typical IS/OOS split |
+| **Regime switch** (macro / style rotation) | Yes | In 2026 Q1 small caps were weak and the index strong, so the cross-sectional long-short factors failed |
+| **Crowded trades** (homogenization) | Yes, and accelerating | Value + quality + momentum + low-volatility is one of the most frequent combinations on the JoinQuant forum |
+| **Public circulation** | **An accelerant, not the only cause of death** | Posts/code spread → more people trade the same direction → factor IC decays faster; but **unpublished strategies also die from regime switches** |
+| **Execution and data differences** | Specific to porting scenarios | `cc_op1` is inconsistent with the local engine → amplified losses |
+
+**On “gradually stopping working after wide circulation on the JoinQuant forum”**:
+
+- **Academia and practice agree**: published factors (especially simple price-volume/fundamental ones) suffer **alpha decay**; the wider the circulation, the faster the arbitrage.
+- **But it is not “share and die”**: what dies is **that fixed set of parameters + fixed factor combination**; what lives is **a process of continuous validation that can retire strategies and swap factors**.
+- **For individual quant traders**: what is truly scarce is not “some frozen toml” but **(1) a data pipeline (2) validation discipline (3) risk control (4) knowing when to let go**.
+
+## 5.4 How to Keep Evolving and Distill Your Own Strategies (Actionable Checklist)
+
+Do not chase “finding a holy-grail strategy”; chase **“a pipeline that can repeatedly produce new strategies”**. This repo already has the tools; run them in a quarterly cycle:
+
+### Step 1: Accept That Strategies Have a Lifespan (Retirement Criteria)
+
+Meeting **any two** of the following puts a strategy into **retirement review** (no adding leverage, no scaling up capital):
+
+| Signal | Threshold (example) | Tool |
+|------|-------------|------|
+| Rolling OOS excess return | < 0 for 2 consecutive quarters | `main.py --mode walk-forward` |
+| Core factor IC | 12-month mean < 0.02 or IR < 0.3 | `main.py --mode factor-analyze` |
+| Paper trading vs backtest slippage | Live/paper annualized return lags the backtest by > 5% | `main.py --mode live-auto` + daily report |
+| Independent JoinQuant validation | The same logic's JQ backtest underperforms the benchmark for > 1 year | `test/*.py` standalone scripts |
+
+**Retirement actions**: freeze the config (rename it to `*_retired_YYYYMMDD.toml`), keep the strategy code but have `registry` not select it by default; write a 3-line eulogy into `reports/` or this section's case table.
+
+### Step 2: A Quarterly “Factor Check-Up”
+
+```bash
+uv run python main.py --mode factor-analyze --config config/final_freeze_2025.toml
+uv run python main.py --mode walk-forward   --config config/final_freeze_2025.toml
+```
+
+Record: an `output/` summary + a one-line conclusion in `reports/` — **which factors are still alive and which are dead**.
+
+### Step 3: Iterate in Small Steps, No Bundled Big Changes
+
+- Change only **1 dimension** at a time: pick one of factor weights / top_k / sell threshold / regime threshold.
+- Reports must cover **both IS and OOS periods** (repo convention: 2025 IS + first half of 2026 OOS).
+- JoinQuant porting: **port only the scoring + top_k buying first**, keeping only the hard stop-loss for selling; ranking-based selling, MA breakdowns, etc. should be **validated on a separate branch**.
+
+### Step 4: Use “Branch Configs” Instead of Overwriting the Frozen Version
+
+```
+config/final_freeze_2025.toml          # Retired, do not modify
+config/csi1000_refit_2026H2.toml      # New candidate; freeze only after full validation
+config/branch_alpha_regime_switch.toml # Regime experiment branch
+```
+
+Naming convention: `final_freeze_*` = snapshots that went live or were seriously considered for going live; `branch_*` = experiments; `*_retired_*` = elegies.
+
+### Step 5: 1 Week of Paper Trading → Small Capital → Only Then Talk About Scaling Up
+
+See `docs/05_live.md`; **a profitable JoinQuant backtest ≠ ready for live trading**, especially for small-cap high-turnover strategies.
+
+### Step 6: Learn the “Structure” from the Community, Do Not Copy the “Parameters”
+
+When reading `test/jq_horse.py` and `test/wufu.py`, extract only:
+
+- Scheduling framework (`run_daily`, sub-strategy capital ratios)
+- Tradability filters (ST, trading suspension, limit-up/limit-down)
+- Risk-control shell (stop-loss, cooldown period)
+
+**Do not copy**: specific magic numbers, the “optimal parameters” in forum posts, and “100x annualized” combinations that have not been through OOS.
+
+## 5.5 Repo Files Related to This Section
+
+| File | Purpose |
+|------|------|
+| `test/cc_op1.py` | Elegy-edition JQ script; records the lessons of the failed port |
+| `reports/migration_check_2026.md` | Source of the local IS/OOS numbers |
+| `config/final_freeze_2025.toml` | Frozen; **no longer used for new capital by default** |
+| `docs/03_engine.md` §4 | Stopping rules to halt overfitting |
+| `docs/06_regulation.md` | Frequency-reduction template for when regulation tightens |
+
+## 5.6 Four Sentences to Remind Yourself
+
+1. **The backtest is the eulogy, paper trading is the autopsy, and whether live trading is the funeral or a resurrection depends on OOS.**
+2. **The miracle strategies on forums mostly die of crowding; even if you never shared yours, it can still die of a regime switch.**
+3. **One sell-rule line in the engine can become ten losing trades once ported to JoinQuant.**
+4. **The goal of evolution is not never to retire, but to have the next candidate waiting in the walk-forward queue when you do.**

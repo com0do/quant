@@ -1,8 +1,8 @@
-"""GBM 多因子策略。
+"""GBM multi-factor strategy.
 
-- 特征列与 simple_3factor 一致，便于 head-to-head 对比
-- 模型缺失 / lightgbm 未安装：降级为中性分（全 0），主链路仍可运行
-- 训练：`main.py --mode gbm-train`；产物默认 `data/models/gbm_multifactor.txt`
+- Feature columns are identical to simple_3factor, enabling head-to-head comparison
+- Model missing / lightgbm not installed: degrades to a neutral score (all 0) and the main flow keeps running
+- Training: `main.py --mode gbm-train`; the artifact defaults to `data/models/gbm_multifactor.txt`
 """
 
 from __future__ import annotations

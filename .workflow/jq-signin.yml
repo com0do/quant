@@ -15,7 +15,7 @@ stages:
     commands:
     # ref_variable below injects the Gitee Go general variables; export them with command tracing off.
     - set +x
-    - "export JQ_USERNAME=\"${JQ_USERNAME}\" JQ_PASSWORD=\"${JQ_PASSWORD}\""
+    - "export JQ_USERNAME=\"${JQ_USERNAME}\" JQ_PASSWORD=\"${JQ_PASSWORD}\" JQ_SOLVE_CAPTCHA=1"
     - bash scripts/ci_jq_signin.sh
     artifacts:
     - name: JQ_SIGNIN_DEBUG

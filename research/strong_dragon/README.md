@@ -20,6 +20,17 @@ A Chinese companion with plain-language explanations of every term is in [`READM
 - On every stock instead of the winners (2,189 CSI 1000 / CSI 2000 names, 2025-01 to 2026-03), the same rule
   fires ~640 times a month, wins 32% of the time and loses 0.4% per trade on average. With the deck's
   sizing (30% per stock, up to 3 stocks) the portfolio lost 52% while CSI 1000 gained 33%.
+- A systematic selector study on all 5,224 Shanghai/Shenzhen stocks over 2019-2026 (train 2019-2022, validation
+  2023-2024, test 2025-2026) tested momentum, volume, relative strength, first limit-up, industry heat/leadership,
+  a market-regime filter and a gradient-boosted classifier. Only the regime filter is non-negative, at +0.1% per
+  trade (t 0.1, indistinguishable from zero); the ML AUC is 0.53, and every 30%-per-name portfolio loses 52-91%
+  while the index gains 14-34%.
+- A 2024-2026 conditional event study on 40,723 signals: policy/industry heat lifts the relative 5-day result
+  from -0.61% to +0.51%, but the best group is -0.96% in 2026; positive-announcement signals are the worst
+  (-1.81%). The 80/20 catalyst split is descriptive, not a tradable filter.
+- The only verifiable use is a market-level breadth overlay, not stock selection: with year-start universes every
+  stock-level entry is flat or negative; holding CSI 1000 when >55% of the 800-stock liquid universe is above MA20
+  returns +31.5%/+13.0%/+12.6% in 2024/2025/2026 (max drawdown -12.7%) versus buy-and-hold +13.3% and -26.5%.
 - "Manual picking" (hot industry + its leader) and three further ideas of ours (a market-mood filter, a wider
   exit, buying the first pullback) were tested out-of-sample: some look good on Jan-Aug 2025, none survives
   Sep 2025-Mar 2026, and passive index exposure beat every variant in both periods.
@@ -34,9 +45,9 @@ A Chinese companion with plain-language explanations of every term is in [`READM
 ## How to read this document
 
 Sections 1-4 answer "is the deck right?", section 5 answers "does manual stock picking fix it?" (5: industry
-and leader, 5.1: news and concept catalysts, 5.2: new-theme limit-ups),
-section 6 is the JoinQuant script, section 7 the CI job, sections 8-9 how to reproduce. Every number comes from
-the scripts in this folder; the glossary at the end explains the trading and statistics terms.
+and leader, 5.1: news and concept catalysts, 5.2: new-theme limit-ups, 5.3: a systematic selector/ML study over
+2019-2026), section 6 is the JoinQuant script, section 7 the CI job, sections 8-9 how to reproduce. Every number
+comes from the scripts in this folder; the glossary at the end explains the trading and statistics terms.
 
 ## 1. What the deck says
 
@@ -353,6 +364,127 @@ the local prices, 2025-11-06..2026-03-12 (83 trading days after a 20-day warm-up
 Conclusion: nothing here beats the index yet. The archive is the precondition for a fair test: re-run this study and
 a news-tagging version once the archive covers 6-12 months.
 
+### 5.3 A systematic selector study, 2019-2026
+
+The earlier sections tested one selection idea at a time. This one asks the deck's missing question directly: of the
+hundreds of signals every month, can a pre-registered price/volume/industry selector pick the ones that pay?
+`fetch_universe.py` downloads forward-adjusted daily bars from Baostock; `selector_study.py` runs the study.
+
+Data and design:
+
+- All 5,224 Shanghai/Shenzhen A-shares in the current `industry_sw.csv` universe (Beijing excluded). The fetcher is
+  resumable; this run used the complete list.
+- 2019-01-02 to 2026-10-26, forward-adjusted, with the exchange `pctChg`, `turn` and `isST` flags; 110,079 fresh-RED
+  signals. Train 2019-2022, validation 2023-2024, test 2025-2026.
+- Every signal is a trade: decide at the close of day t, buy at the open of t+1 (skip a limit-up open), sell at the
+  open after GREEN, an 8% stop, or the end of the data. Costs: 0.03% commission, 0.05% stamp duty on sells, 0.1%
+  slippage. The portfolio uses 30% per name, at most 3 names, and a 50M CNY 20-day average-value filter.
+- Selectors: 3-day momentum, 5-day momentum, volume expansion, relative strength versus industry, first limit-up,
+  a composite "dragon score", hot industry + leader, a market-regime filter (index above MA20 and breadth > 50%),
+  and a gradient-boosted classifier trained on 2019-2022 and validated on 2023-2024.
+
+Baseline, all signals:
+
+| Period | Closed trades | Unfilled | Win rate | Mean | Median | t |
+|---|---|---|---|---|---|---|
+| train | 43,464 | 1,723 | 30.3% | -1.22% | -2.83% | -11.0 |
+| validation | 23,241 | 2,557 | 26.7% | -2.01% | -3.38% | -10.8 |
+| test | 25,916 | 955 | 31.2% | -0.67% | -2.71% | -6.2 |
+
+The baseline portfolio (top 3 by 3-day momentum) lost 77.1% in the test period (max drawdown -77.1%, Sharpe -0.82,
+306 trades), while equal-weight A-shares made +33.9%, CSI 1000 +14.4% and CNI 2000 +19.3%.
+
+Selectors, top 1 signal per day, mean trade return:
+
+| Selector | Train | Validation | Test | Test t | Test trades |
+|---|---|---|---|---|---|
+| 3-day momentum | -1.66% | -3.55% | -0.75% | -0.9 | 378 |
+| 5-day momentum | -2.77% | -3.63% | -1.92% | -2.3 | 278 |
+| volume expansion | -1.05% | -2.37% | -1.59% | -2.6 | 422 |
+| relative strength | -2.76% | -3.70% | -1.08% | -1.3 | 279 |
+| first limit-up | -2.11% | -2.82% | -1.14% | -1.7 | 373 |
+| dragon score | -2.51% | -3.51% | -0.95% | -1.0 | 380 |
+| hot industry + leader | -2.99% | -2.57% | -1.15% | -1.3 | 288 |
+| regime + dragon | -1.61% | -3.06% | +0.11% | +0.1 | 170 |
+| ML (trained 2019-22) | n/a | -1.13% | -0.57% | -0.9 | 434 |
+
+- Only the regime filter is non-negative, at +0.11% per trade; it is statistically indistinguishable from zero
+  (t 0.07). Its portfolio still lost 51.9%, and the ML portfolio lost 66.9%.
+- The baseline is negative in all eight calendar years (2019 -1.10%, 2020 -1.24%, 2021 -0.76%, 2022 -1.83%,
+  2023 -1.60%, 2024 -2.24%, 2025 -0.61%, 2026 -0.75%), so this is not a cost artifact or one bad regime.
+- The classifier's AUC is 0.596 on validation and 0.529 on test: it barely ranks winners above losers.
+- The best of the nine portfolios is the regime filter at -52% (max drawdown -59%); the index made +14% to +34%.
+- Conclusion: the deck's missing selection rule is not recoverable from price, volume or industry membership.
+  The signal describes a move that already happened; buying the next open is a negative-expectancy short-term
+  chase. In this sample the only robust choice is passive index exposure.
+
+Caveats: the universe is today's `industry_sw.csv` membership (survivorship), there is no point-in-time news feed
+for the full period, and the indicator itself is an approximation.
+
+### 5.4 Policy/industry heat vs company announcements, 2024-2026
+
+The deck's 21 cases had a company catalyst before the move in only 4 names (about 20%); the rest started on industry
+or policy news. A conditional event study on **40,723 tradable strong-dragon signals** (2024-01-02..2026-10-23)
+tests whether that distinction is tradable. It conditions the forward 5-day return (next open → close) on prior
+industry heat (limit-up count / 5-day return / breadth) and prior policy news (CCTV → Shenwan level 1), and on
+company announcements. Full data and method: [`../news_selector/README.md`](../news_selector/README.md) §4.1.
+
+| Group | n | mean 5d | daily t |
+|---|---:|---:|---:|
+| all signals | 40,636 | -0.61% | -3.92 |
+| industry heat top 20% | 13,034 | -0.06% | -2.04 |
+| policy heat top 20% | 11,007 | -0.63% | -3.10 |
+| policy top + industry top | 4,624 | +0.51% | -0.33 |
+| positive announcement | 3,798 | -1.81% | -2.92 |
+| no announcement | 32,339 | -0.29% | -3.52 |
+
+- The best group (policy top + industry top) is +1.16% in 2024, +1.03% in 2025 and **-0.96% in 2026**: relative
+  improvement, not a stable edge.
+- **Positive-announcement signals are the worst group** (-1.81%; no announcement -0.29%). The 80/20 split is
+  descriptively right — announcements describe some winners, but by the time they are public the move is priced;
+  the other 80% are policy/industry stories a title feed cannot capture.
+- A policy/industry filter can reduce the loss; it does not turn the strong-dragon signal into a positive strategy.
+  Treat the indicator as descriptive, not as a standalone entry.
+
+### 5.5 What can be verified: breadth timing, not stock picking
+
+The year-start point-in-time tests remove the 2026-liquidity look-ahead. With the universe selected at the start of
+each year (top 800 by 20-day turnover), the stock-level entries have no stable edge (forward 5-day return, next open
+→ 5th close):
+
+| Entry | 2024 | 2025 | 2026 |
+|---|---:|---:|---:|
+| fresh RED | -0.05% | +0.38% | +0.43% |
+| 60-day tight breakout | +4.62% | +0.35% | -1.30% |
+| pullback to MA5 | -1.18% | +0.60% | +0.05% |
+| first limit-up | -1.44% | -0.29% | -0.27% |
+| RED + 20-day high + volume | -2.41% | +0.19% | -1.12% |
+
+The earlier +1.18% `fresh` and +2.01% `breakout` on a March-2026 universe were look-ahead: using 2026 liquidity to
+select 2024 stocks keeps survivors. With year-start universes they disappear.
+
+What does survive is a **market-wide breadth rule using the same MA20 as the dragon indicator**. Hold CSI 1000 when
+more than 55% of the 800-stock liquid universe closes above MA20; otherwise cash. The signal is known at the close
+of day t, the position earns the next day's index return, and every switch costs 5 bp:
+
+| Rule | 2024 | 2025 | 2026 | Total | Max DD | Sharpe | Exposure |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| buy & hold | -1.0% | +33.8% | -14.5% | +13.3% | -26.5% | 0.30 | 100% |
+| breadth > 45% | +17.5% | +20.8% | +7.5% | +52.6% | -15.2% | 0.91 | 51% |
+| breadth > 50% | +31.2% | +7.2% | +6.9% | +50.4% | -19.0% | 0.91 | 45% |
+| breadth > 55% | +31.5% | +13.0% | +12.6% | +67.3% | -12.7% | 1.17 | 38% |
+| breadth > 60% | +30.9% | +16.6% | +10.3% | +68.3% | -12.7% | 1.21 | 33% |
+
+- The threshold is a plateau: 45%, 50%, 55% and 60% are all positive in every year; it is not a knife-edge fit.
+- It is a **risk overlay, not a stock picker**. It underperforms the 2025 buy-and-hold (+13% vs +34%) and avoids the
+  2024/2026 drawdowns. The edge is the MA20 breadth/trend, not the RED/GREEN oscillator itself.
+- Dragon-specific timing is not stable: `net_red > 0` (more RED than GREEN bars) returns +23.8% in total but -6.9%
+  in 2025; `fresh_count > 10 & breadth > 50%` returns +27.9% but -0.3% in 2025. Use the MA20 breadth, not the
+  red/green oscillator.
+- Caveats: the 800-stock liquid universe is selected as of 2026-03 (mild survivorship); the test is 2024-2026 only;
+  costs are 5 bp per switch with no slippage, tracking error or tax; 2026 is partial; implementation is via an index
+  ETF. This is an MVP risk overlay, not a live-ready alpha strategy.
+
 ## 6. JoinQuant script
 
 `jq_strong_dragon.py` is a single file to paste into a JoinQuant strategy. Suggested backtest: daily frequency,
@@ -383,7 +515,7 @@ Treat any JoinQuant result as research; per `AGENTS.md`, nothing here goes live.
 JoinQuant blocks non-Mainland-China IPs, so GitHub-hosted runners cannot log in. The check-in runs on Gitee Go:
 `.workflow/jq-signin.yml` (daily 08:05, one `build@python` step) calls `scripts/ci_jq_signin.sh`, which:
 
-1. pip-installs Playwright, numpy, pillow and scipy from the Aliyun mirror;
+1. pip-installs Playwright, numpy and pillow from the Aliyun mirror;
 2. fetches the login page with plain `urllib` and stops (exit 2) if it shows the region-block page;
 3. stops (exit 1) if `JQ_USERNAME` / `JQ_PASSWORD` are missing, so a misconfigured run costs about 2 minutes instead
    of a browser install;
@@ -399,9 +531,15 @@ the pipeline in the pipeline editor, which writes it into the YAML as `ref_varia
 neither its value nor its name (measured). The YAML runs `set +x` and then exports both variables, so the values
 never appear in the command trace. The same names are used in `.env`, GitHub Secrets and the code.
 
-The check-in button opens a slider captcha ("完成拼图验证", complete the jigsaw). It is deliberately not solved
-automatically, since that would defeat JoinQuant's anti-bot check; the run closes it, prints
-`ACTION REQUIRED: ... check in by hand`, and the check-in is done by hand on the credits page.
+The check-in button opens a jigsaw slider ("完成拼图验证", complete the jigsaw). With `JQ_SOLVE_CAPTCHA=1`
+(the Gitee pipeline and the home-node unit export it) `scripts/jq_auto_claim.py` solves it: the page ships the
+background as shuffled 11x71 strips together with each strip's source offset, so the script reassembles the image
+and finds the cut-out with a masked sum of squared differences, then drags the handle by that distance. The solver
+was checked against the live endpoint (`POST /common/verifyCode/validate` returned `result: true`) and end-to-end on
+Gitee build #26 (2026-10-27): it solved the check-in slider on the first attempt, the card changed to 已签到,
+credits went 89 -> 90, and the credit history shows 签到成功 +1. The flag
+defaults to 0, which preserves the previous behaviour: close the dialog and print
+`ACTION REQUIRED: ... check in by hand`.
 
 Measured on Gitee (October 2026):
 
@@ -415,7 +553,7 @@ Measured on Gitee (October 2026):
 | General variables not associated with the pipeline | not injected: absent from build parameters and environment |
 | Scheduled trigger (08:05) | fires (trigger type TIMER) |
 | Login with associated variables | works; about 4-6 minutes per run, most of it pip and the browser install |
-| Daily check-in | blocked by the slider captcha (see above) |
+| Daily check-in | works end-to-end: build #26 solved the slider, card showed 已签到, credits 89 -> 90, history +1 |
 | Article reading | opens and reads an article; no credit appeared in the history the same evening |
 
 Not verified yet: whether the article credit is booked later (the history shows article credits booked seconds
@@ -434,6 +572,11 @@ uv run python research/strong_dragon/fetch_catalysts.py --workers 12     # ~40 m
 uv run python research/strong_dragon/catalyst_study.py                   # ~2 minutes
 uv run python scripts/news_archive.py --sources ths_limit_up             # ~6 minutes the first time (one year)
 uv run python research/strong_dragon/theme_study.py                      # ~1 minute
+uv run --with baostock python research/strong_dragon/fetch_universe.py --start 2019-01-01 --workers 8   # Baostock daily bars
+uv run python research/strong_dragon/selector_study.py                   # section 5.3: selectors + ML
+uv run python research/news_selector/policy_event_study.py --start 2024-01-01 --end 2026-10-26   # section 5.4
+uv run python research/strong_dragon/strategy_search.py --universe data/market/universe_2026.csv --start 2026-01-01 --end 2026-10-26   # section 5.5 entries
+uv run python research/strong_dragon/market_timing.py --start 2024-01-01 --end 2026-10-26   # section 5.5 breadth timing
 ```
 
 Daily bars for the cases come from JQData when its server (port 7000) is reachable, otherwise from public
@@ -458,6 +601,10 @@ not exercised). Downloads, grid overlays and result CSVs go to `output/strong_dr
 | `fetch_catalysts.py` | Section 5.1 inputs: cninfo announcements, Eastmoney earnings forecasts and concept tags (cached in `output/`) |
 | `catalyst_study.py` | Section 5.1: catalyst / concept variants, train vs test, and the case check |
 | `theme_study.py` | Section 5.2: new-theme leaders vs other limit-ups, from the archived Tonghuashun pools |
+| `fetch_universe.py` | Section 5.3: Baostock forward-adjusted daily bars for the selector study (resumable) |
+| `selector_study.py` | Section 5.3: features, rule selectors, ML classifier, train/validation/test portfolios |
+| `strategy_search.py` | Section 5.5: year-start entry event study (fresh / pullback / breakout / first limit-up) |
+| `market_timing.py` | Section 5.5: market breadth timing (MA20 breadth > 55%) |
 | `jq_strong_dragon.py` | Section 6: JoinQuant strategy |
 | `universe_equity.png` | Equity curves of section 4 |
 

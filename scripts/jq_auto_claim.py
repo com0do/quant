@@ -3,11 +3,12 @@ JoinQuant auto sign-in & credit claimer.
 
 Uses Playwright headless Chromium to log in, read one community article and press the daily check-in, then reports
 the credit balance before / after and the newest credit-history rows.
-A login-page puzzle captcha is handled via template matching (scipy). The check-in button opens a slider captcha that
-is not solved: the run prints "ACTION REQUIRED" and the check-in has to be done by hand.
+JoinQuant guards login and the check-in with a jigsaw slider. The puzzle is reconstructed from the page and solved
+with a masked image match when JQ_SOLVE_CAPTCHA=1; otherwise the run prints "ACTION REQUIRED" and stops at the slider.
 
 Environment variables (repo .env, or CI secrets):
   JQ_USERNAME / JQ_PASSWORD
+  JQ_SOLVE_CAPTCHA — "1" to solve the slider automatically (default 0: manual check-in)
 
 Exit codes:
   0 — login + claim ok (or claim partial but login ok)
@@ -20,7 +21,10 @@ Usage:
 
 from __future__ import annotations
 
+import base64
 import io
+import json
+import math
 import os
 import re
 import sys
@@ -29,7 +33,6 @@ from pathlib import Path
 
 import numpy as np
 from PIL import Image
-from scipy.signal import correlate2d
 
 LOGIN_URLS = (
     "https://www.joinquant.com/user/login/index",
@@ -120,117 +123,337 @@ def _first_visible(page, selectors: tuple[str, ...], timeout_ms: int = 8000):
     return None, ""
 
 
-def solve_puzzle_captcha(page) -> bool:
-    """Attempt to solve the JoinQuant sliding puzzle captcha."""
+CAPTCHA_ROOT = "#yth_captchar"
+CAPTCHA_DRAG = "#slideVerifyDragControl"
+CAPTCHA_HANDLE = ".valid-code__drag-handle"
+
+
+def _captcha_enabled() -> bool:
+    """The slider is solved only when the operator opts in (JQ_SOLVE_CAPTCHA=1).
+
+    JoinQuant guards both login and the daily check-in with a jigsaw slider. Leaving this off keeps the previous
+    behaviour (stop, log ACTION REQUIRED) and keeps the account out of anything the site may treat as automation;
+    the Gitee Go pipeline and the home-node unit set it to 1 explicitly.
+    """
+    return os.getenv("JQ_SOLVE_CAPTCHA", "0").strip().lower() not in ("", "0", "false", "no", "off")
+
+
+def _captcha_visible(page) -> bool:
+    for sel in (CAPTCHA_ROOT, CAPTCHA_DRAG):
+        try:
+            if page.locator(sel).first.is_visible(timeout=1000):
+                return True
+        except Exception:
+            continue
+    return False
+
+
+def _data_url_bytes(value: str) -> bytes | None:
+    m = re.search(r"url\(['\"]?(.*?)['\"]?\)", value or "", re.S)
+    if not m or not m.group(1).startswith("data:"):
+        return None
     try:
-        captcha_visible = page.evaluate("""() => {
-            const el = document.querySelector('.geetest_panel') ||
-                       document.querySelector('#captcha') ||
-                       document.querySelector('[class*="captcha"]') ||
-                       document.querySelector('[class*="verify"]');
-            return el ? el.offsetParent !== null : false;
-        }""")
-        if not captcha_visible:
-            return True
-
-        xy_data = page.evaluate("""() => {
-            const xy = document.querySelector('#xy_img');
-            if (!xy) return null;
-            const canvas = document.createElement('canvas');
-            canvas.width = xy.naturalWidth || xy.width;
-            canvas.height = xy.naturalHeight || xy.height;
-            const ctx = canvas.getContext('2d');
-            ctx.drawImage(xy, 0, 0);
-            return canvas.toDataURL('image/png');
-        }""")
-
-        bg_data = page.evaluate("""() => {
-            const bg = document.querySelector('#bg_img');
-            if (!bg) return null;
-            const canvas = document.createElement('canvas');
-            canvas.width = bg.naturalWidth || bg.width;
-            canvas.height = bg.naturalHeight || bg.height;
-            const ctx = canvas.getContext('2d');
-            ctx.drawImage(bg, 0, 0);
-            return canvas.toDataURL('image/png');
-        }""")
-
-        if xy_data and bg_data:
-            gap = _find_gap(bg_data, xy_data)
-            if gap > 0:
-                return _perform_slide(page, gap)
+        return base64.b64decode(m.group(1).split(",", 1)[1])
     except Exception:
-        pass
+        return None
 
+
+def _parse_px(value: str) -> tuple[int, int] | None:
+    nums = re.findall(r"(-?\d+(?:\.\d+)?)px", value or "")
+    if len(nums) < 2:
+        return None
+    return int(float(nums[0])), int(float(nums[1]))
+
+
+def _read_captcha(page) -> dict | None:
+    """Read the live captcha from the DOM: tile background offsets, background image, piece image and its top.
+
+    The login widget tiles the background into 11x71 strips; the check-in widget is the same template but may not
+    tile it. Both shapes are read here, and same-origin iframes are searched too.
+    """
     try:
-        close_btn = page.locator('[class*="close"], .geetest_panel_close, [aria-label="close"]').first
-        if close_btn.is_visible(timeout=2000):
-            close_btn.click()
-            return True
-    except Exception:
-        pass
+        return page.evaluate(
+            """() => {
+                const frames = [];
+                const docs = [document];
+                for (const f of document.querySelectorAll('iframe')) {
+                    frames.push(f.src || '');
+                    try { if (f.contentDocument) docs.push(f.contentDocument); } catch (e) {}
+                }
+                const find = (sel) => {
+                    for (const d of docs) { const el = d.querySelector(sel); if (el) return el; }
+                    return null;
+                };
+                const root = find('#yth_captchar') || find('.valid-code');
+                const drag = find('#slideVerifyDragControl') || find('.valid-code__drag');
+                const piece = find('#xy_img') || find('.valid-code__hq');
+                if (!root || !drag || !piece) {
+                    return {error: 'missing', root: !!root, drag: !!drag, piece: !!piece, frames};
+                }
+                const css = (el, p) => getComputedStyle(el)[p] || '';
+                let bgCandidates = [];
+                for (const el of [root, ...root.querySelectorAll('*')]) {
+                    if (el === piece) continue;
+                    const s = el.style.backgroundImage || css(el, 'backgroundImage');
+                    if (s && s !== 'none') {
+                        bgCandidates.push({tag: el.tagName, id: el.id,
+                                           cls: String(el.className).slice(0, 60), bg: s,
+                                           pos: el.style.backgroundPosition || css(el, 'backgroundPosition'),
+                                           w: el.offsetWidth, h: el.offsetHeight});
+                    }
+                    if (el.tagName === 'IMG' && el.src) {
+                        bgCandidates.push({tag: 'IMG', id: el.id,
+                                           cls: String(el.className).slice(0, 60),
+                                           bg: 'url("' + el.src + '")',
+                                           pos: '', w: el.offsetWidth, h: el.offsetHeight});
+                    }
+                    if (el.tagName === 'CANVAS') {
+                        try {
+                            bgCandidates.push({tag: 'CANVAS', id: el.id,
+                                               cls: String(el.className).slice(0, 60),
+                                               bg: el.toDataURL('image/png'),
+                                               pos: '', w: el.offsetWidth, h: el.offsetHeight});
+                        } catch (e) {}
+                    }
+                }
+                let tiles = [...root.querySelectorAll('.valid-code__div-item')].map(el => ({
+                    bg: el.style.backgroundImage || css(el, 'backgroundImage'),
+                    pos: el.style.backgroundPosition || css(el, 'backgroundPosition'),
+                    w: el.offsetWidth, h: el.offsetHeight,
+                }));
+                if (!tiles.length) {
+                    tiles = bgCandidates.filter(c => c.pos && /-[0-9]/.test(c.pos) && c.w > 0 && c.h > 0);
+                }
+                let bg = '';
+                if (tiles.length) bg = tiles[0].bg;
+                if (!bg || bg === 'none') {
+                    const pick = bgCandidates.find(c => c.bg.indexOf('data:image') >= 0
+                                                     || c.bg.indexOf('http') >= 0);
+                    if (pick) bg = pick.bg;
+                }
+                const pieceBg = piece.style.backgroundImage || css(piece, 'backgroundImage')
+                    || (piece.tagName === 'IMG' ? 'url("' + piece.src + '")' : '');
+                return {
+                    error: null, frames, rootTag: root.tagName, rootId: root.id,
+                    rootCls: String(root.className).slice(0, 80), tileCount: tiles.length,
+                    bgW: root.clientWidth, bgH: root.clientHeight,
+                    blockW: tiles.length ? tiles[0].w : 0,
+                    blockH: tiles.length ? tiles[0].h : 0,
+                    positions: tiles.map(t => t.pos),
+                    bg, pieceBg, bgCandidates: bgCandidates.slice(0, 12),
+                    pieceTop: parseInt(piece.style.top || css(piece, 'top'), 10) || 0,
+                };
+            }"""
+        )
+    except Exception as exc:
+        return {"error": f"evaluate failed: {exc}"}
 
+
+def _captcha_dom_summary(page) -> dict:
+    try:
+        return page.evaluate(
+            """() => {
+                const out = {url: location.href, frames: [], nodes: []};
+                for (const f of document.querySelectorAll('iframe')) out.frames.push(f.src || '');
+                const docs = [document];
+                for (const f of document.querySelectorAll('iframe')) {
+                    try { if (f.contentDocument) docs.push(f.contentDocument); } catch (e) {}
+                }
+                const sels = ['#yth_captchar', '#xy_img', '#slideVerifyDragControl', '#bg_img', '.valid-code',
+                              '.valid-code__hq', '.valid-code__drag', '.valid-code__drag-handle'];
+                for (const doc of docs) {
+                    for (const sel of sels) {
+                        const el = doc.querySelector(sel);
+                        if (el) out.nodes.push({sel, tag: el.tagName, id: el.id,
+                                                cls: String(el.className).slice(0, 80),
+                                                vis: el.offsetParent !== null});
+                    }
+                    for (const el of doc.querySelectorAll('[id], [class]')) {
+                        const s = (el.id + ' ' + String(el.className)).toLowerCase();
+                        if (!/valid|captcha|slide|verify|drag|puzzle|jigsaw/.test(s)) continue;
+                        out.nodes.push({tag: el.tagName, id: el.id, cls: String(el.className).slice(0, 80),
+                                        text: (el.innerText || '').slice(0, 60), vis: el.offsetParent !== null});
+                        if (out.nodes.length > 50) break;
+                    }
+                }
+                return out;
+            }"""
+        )
+    except Exception as exc:
+        return {"error": str(exc)}
+
+
+def captcha_gap(data: dict) -> int | None:
+    """Distance the piece has to travel, from the tile permutation and the two images.
+
+    The server sends the background as 11x71 strips in shuffled order together with the source offset of each
+    strip (point). Reassembling the strips gives the picture the user sees; the piece is the matching cut-out.
+    A masked sum of squared differences at the piece's fixed vertical offset is exact (the gap is a real cut-out),
+    so no template heuristics or browser plugins are needed.
+    """
+    bg_bytes = _data_url_bytes(data.get("bg", ""))
+    piece_bytes = _data_url_bytes(data.get("pieceBg", ""))
+    positions = [_parse_px(p) for p in data.get("positions") or []]
+    if not bg_bytes or not piece_bytes or (positions and any(p is None for p in positions)):
+        print(f"[JQ] captcha: images missing bg={bool(bg_bytes)} piece={bool(piece_bytes)} tiles={len(positions)}")
+        return None
+    try:
+        bg = Image.open(io.BytesIO(bg_bytes)).convert("RGB")
+        piece = Image.open(io.BytesIO(piece_bytes)).convert("RGBA")
+        bg_w, bg_h = bg.size
+        block_w, block_h = int(data.get("blockW") or 0), int(data.get("blockH") or 0)
+        display = bg
+        if positions and block_w > 0 and block_h > 0:
+            cols = max(1, bg_w // block_w)
+            display = Image.new("RGB", (bg_w, bg_h))
+            for i, (sx, sy) in enumerate(positions):
+                row, col = divmod(i, cols)
+                left, top = -sx, -sy
+                tile = bg.crop((left, top, left + block_w, top + block_h))
+                display.paste(tile, (col * block_w, row * block_h))
+
+        piece_rgb = np.asarray(piece.convert("RGB"), dtype=np.int16)
+        mask = np.asarray(piece.getchannel("A")) > 200
+        if not mask.any():
+            mask = np.ones(piece_rgb.shape[:2], dtype=bool)
+        height, width = piece_rgb.shape[:2]
+        if height > bg_h or width > bg_w:
+            print(f"[JQ] captcha: piece {width}x{height} larger than background {bg_w}x{bg_h}")
+            return None
+        display_rgb = np.asarray(display, dtype=np.int16)
+        n = max(1, int(mask.sum()))
+
+        def best_at(top: int) -> tuple[int, int]:
+            best_s, best_x = float("inf"), -1
+            for x in range(0, bg_w - width + 1):
+                patch = display_rgb[top:top + height, x:x + width]
+                diff = (patch - piece_rgb)[mask].astype(np.int32)
+                score = int((diff * diff).sum())
+                if score < best_s:
+                    best_s, best_x = score, x
+            return best_s, best_x
+
+        top = max(0, min(int(data.get("pieceTop") or 0), bg_h - height))
+        score, x = best_at(top)
+        if x < 0 or score / n > 50:
+            for yy in range(0, bg_h - height + 1, 2):
+                if abs(yy - top) < 2:
+                    continue
+                s, xx = best_at(yy)
+                if xx >= 0 and s < score:
+                    score, x, top = s, xx, yy
+        if x >= 0:
+            print(f"[JQ] captcha: bg={bg.size}, piece={piece.size}, gap={x}, top={top}, mse={score / n:.1f}")
+            return x
+        return None
+    except Exception as exc:
+        print(f"[JQ] captcha image analysis failed: {exc}")
+        return None
+
+
+def _drag_piece(page, gap: int) -> bool:
+    handle = page.locator(CAPTCHA_HANDLE).first
+    try:
+        handle.wait_for(state="visible", timeout=5000)
+        box = handle.bounding_box()
+    except Exception:
+        return False
+    if not box:
+        return False
+    start_x = box["x"] + box["width"] / 2
+    start_y = box["y"] + box["height"] / 2
+    page.mouse.move(start_x, start_y)
+    page.mouse.down()
+    steps = max(24, min(60, abs(gap) // 4 + 24))
+    for i in range(1, steps + 1):
+        progress = i / steps
+        eased = 1 - (1 - progress) ** 3
+        page.mouse.move(start_x + gap * eased, start_y + math.sin(progress * math.pi * 3) * 1.5)
+        time.sleep(0.008 + 0.012 * (1 - progress))
+    page.mouse.move(start_x + gap, start_y)
+    page.mouse.up()
     return True
 
 
-def _find_gap(bg_data_url: str, slider_data_url: str) -> int:
-    try:
-        bg_bytes = _data_url_to_bytes(bg_data_url)
-        slider_bytes = _data_url_to_bytes(slider_data_url)
-
-        bg = Image.open(io.BytesIO(bg_bytes)).convert("L")
-        slider = Image.open(io.BytesIO(slider_bytes)).convert("L")
-
-        bg_arr = np.array(bg, dtype=np.float64)
-        slider_arr = np.array(slider, dtype=np.float64)
-
-        bg_arr = (bg_arr - bg_arr.mean()) / (bg_arr.std() + 1e-9)
-        slider_arr = (slider_arr - slider_arr.mean()) / (slider_arr.std() + 1e-9)
-
-        corr = correlate2d(bg_arr, slider_arr, mode="valid")
-        _, x = np.unravel_index(np.argmax(corr), corr.shape)
-        return int(x)
-    except Exception:
-        return -1
-
-
-def _data_url_to_bytes(data_url: str) -> bytes:
-    import base64
-
-    _, encoded = data_url.split(",", 1)
-    return base64.b64decode(encoded)
-
-
-def _perform_slide(page, gap_x: int) -> bool:
-    try:
-        slider = page.locator(".geetest_slider_button, [class*='slider'], [class*='slide']").first
-        if not slider.is_visible(timeout=2000):
+def _captcha_result(page, timeout: float = 8.0) -> bool:
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        try:
+            cls = page.locator(CAPTCHA_DRAG).first.get_attribute("class") or ""
+        except Exception:
+            cls = ""
+        if "success" in cls:
+            return True
+        if "error" in cls:
             return False
+        if not _captcha_visible(page):
+            return True
+        time.sleep(0.25)
+    return False
 
-        box = slider.bounding_box()
-        if not box:
-            return False
 
-        start_x = box["x"] + box["width"] / 2
-        start_y = box["y"] + box["height"] / 2
-
-        page.mouse.move(start_x, start_y)
-        page.mouse.down()
-
-        steps = 20
-        for i in range(1, steps + 1):
-            progress = i / steps
-            eased = 1 - (1 - progress) ** 3
-            x = start_x + gap_x * eased
-            y = start_y + (np.sin(progress * 3) * 2)
-            page.mouse.move(x, y)
-            time.sleep(0.01 + 0.03 * (1 - progress))
-
-        page.mouse.up()
-        time.sleep(2)
-        return True
-    except Exception:
+def solve_slider_captcha(page, attempts: int = 3) -> bool:
+    """Solve the JoinQuant jigsaw slider (caller must have checked _captcha_enabled)."""
+    if not _captcha_visible(page):
         return False
+    first_fail = True
+    for attempt in range(1, attempts + 1):
+        data = _read_captcha(page)
+        if not data or data.get("error"):
+            print(f"[JQ] captcha attempt {attempt}: {json.dumps(data, ensure_ascii=False)[:1200]}")
+            if first_fail:
+                print(f"[JQ] captcha DOM: {json.dumps(_captcha_dom_summary(page), ensure_ascii=False)[:3000]}")
+                _save_debug(page, "jq_captcha")
+                first_fail = False
+            time.sleep(1.0)
+            continue
+        gap = captcha_gap(data)
+        if gap is None:
+            print(f"[JQ] captcha attempt {attempt}: could not locate the gap "
+                  f"(tiles={data.get('tileCount')}, bg={len(data.get('bg') or '')}, piece={len(data.get('pieceBg') or '')})")
+            if first_fail:
+                print(f"[JQ] captcha DOM: {json.dumps(_captcha_dom_summary(page), ensure_ascii=False)[:3000]}")
+                _save_debug(page, "jq_captcha")
+                first_fail = False
+            time.sleep(1.0)
+            continue
+        delta = (0, -6, 6, -11, 11)[(attempt - 1) % 5]
+        drag = max(0, gap + delta)
+        print(f"[JQ] captcha attempt {attempt}: gap={gap} delta={delta} drag={drag}px")
+        print(f"[JQ] captcha: root={data.get('rootTag')}#{data.get('rootId')} tiles={data.get('tileCount')} "
+              f"bg_len={len(data.get('bg') or '')} piece_len={len(data.get('pieceBg') or '')}")
+        for c in (data.get("bgCandidates") or []):
+            print(f"[JQ] captcha candidate: {c.get('tag')} id={c.get('id')} cls={c.get('cls')} "
+                  f"len={len(c.get('bg') or '')} pos={c.get('pos')} w={c.get('w')} h={c.get('h')}")
+        if not _drag_piece(page, drag):
+            print(f"[JQ] captcha attempt {attempt}: drag handle not found")
+            time.sleep(1.0)
+            continue
+        if _captcha_result(page):
+            print(f"[JQ] captcha solved on attempt {attempt}")
+            return True
+        print(f"[JQ] captcha attempt {attempt}: rejected, waiting for a new puzzle")
+        time.sleep(1.5)
+        if not _captcha_visible(page):
+            return True
+    return False
+
+
+def _close_captcha_dialog(page) -> None:
+    for sel in (".bootstrap-dialog .close", ".el-dialog__headerbtn", "#slideVerifyDragControl .close"):
+        try:
+            loc = page.locator(sel).first
+            if loc.is_visible(timeout=1000):
+                loc.click()
+                time.sleep(0.5)
+                return
+        except Exception:
+            continue
+    try:
+        page.keyboard.press("Escape")
+    except Exception:
+        pass
+
 
 
 # Visible short elements whose text mentions check-in / claim / credits / tasks (JoinQuant UI words, so Chinese).
@@ -301,7 +524,7 @@ def _popup_texts(page) -> list[str]:
 
 
 def _check_in(page) -> str:
-    """Click the daily check-in card's button: 'clicked', 'already' (button says done) or 'missing'."""
+    """Click the daily check-in card's button: 'clicked', 'already' (button says done), 'captcha' or 'missing'."""
     card = _task_card(page, _CHECKIN_CARD)
     btn = card.locator("button").first
     if btn.count() == 0 or not btn.is_visible():
@@ -313,16 +536,22 @@ def _check_in(page) -> str:
     time.sleep(2)
     popups = _popup_texts(page)
     print(f"[JQ] After check-in click: card={' '.join(card.inner_text().split())!r} popups={popups}")
-    # "jigsaw verification": the check-in is guarded by a slider captcha that is deliberately not solved; close it so
-    # the modal does not block the rest of the page, and report that a manual check-in is needed.
-    if any("拼图" in p for p in popups):
-        close = page.locator(".el-dialog__headerbtn")
-        for i in range(close.count()):
-            if close.nth(i).is_visible():
-                close.nth(i).click()
-                time.sleep(1)
-        print("[JQ] ACTION REQUIRED: the daily check-in shows a slider captcha; check in by hand on the credits page")
-        return "captcha"
+    if any("拼图" in p for p in popups) or _captcha_visible(page):
+        if not _captcha_enabled():
+            _close_captcha_dialog(page)
+            print("[JQ] ACTION REQUIRED: the daily check-in shows a slider captcha; set JQ_SOLVE_CAPTCHA=1 "
+                  "to solve it automatically, or check in by hand on the credits page")
+            return "captcha"
+        if not solve_slider_captcha(page):
+            _close_captcha_dialog(page)
+            print("[JQ] ACTION REQUIRED: the slider could not be solved; check in by hand on the credits page")
+            return "captcha"
+        time.sleep(2)
+        card = _task_card(page, _CHECKIN_CARD)
+        btn = card.locator("button").first
+        if btn.count() and (btn.inner_text().strip().startswith(_DONE_PREFIX) or btn.is_disabled()):
+            print(f"[JQ] Check-in card after captcha: {' '.join(card.inner_text().split())!r}")
+        return "clicked"
     return "clicked"
 
 
@@ -525,7 +754,11 @@ def _login(page, username: str, password: str) -> dict:
                 continue
 
             time.sleep(3)
-            solve_puzzle_captcha(page)
+            if _captcha_visible(page):
+                if _captcha_enabled():
+                    solve_slider_captcha(page)
+                else:
+                    print("[JQ] login captcha visible; set JQ_SOLVE_CAPTCHA=1 to solve it automatically")
             time.sleep(2)
 
             try:
@@ -591,6 +824,13 @@ def run_claim() -> dict:
             locale="zh-CN",
         )
         page = context.new_page()
+
+        def _log_post(request):
+            url = request.url.lower()
+            if request.method == "POST" and ("verifycode" in url or "credit" in url or "checkin" in url):
+                print(f"[JQ] POST {request.url} data={request.post_data}")
+
+        page.on("request", _log_post)
 
         try:
             login_result = _login(page, username, password)

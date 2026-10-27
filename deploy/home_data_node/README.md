@@ -4,7 +4,7 @@
 
 | Step | What it does |
 |------|------|
-| 1 | JoinQuant web check-in to collect credits (the check-in itself needs a manual click: slider captcha) |
+| 1 | JoinQuant web check-in to collect credits (slider captcha solved automatically; `JQ_SOLVE_CAPTCHA=0` to do it by hand) |
 | 2 | Incremental JQ sync of CSI 1000 / 2000 / 300+500 |
 | 3 | News / theme archive into `data/news/` (limit-up pools, news flashes, investor Q&A, concept tags) |
 | 4 | **Three-year LRU**: delete expired SQLite rows + `VACUUM` |

@@ -241,7 +241,8 @@ If you don't want to tar (after all, the SQLite files are several hundred MB), y
 `deploy/home_data_node/bin/run-daily.sh` runs in this order:
 
 1. **Check-in** (`run-jq-signin.sh`) — a failure does not block the later steps. The check-in button is behind a
-   slider captcha that is not solved automatically; the log says `ACTION REQUIRED` and the check-in is done by hand.
+   jigsaw slider; with `JQ_SOLVE_CAPTCHA=1` (the unit sets it) `scripts/jq_auto_claim.py` solves it automatically.
+   Set the flag to 0 in the unit environment to fall back to the manual flow (`ACTION REQUIRED` in the log).
 2. **JQ sync** (`run-jq-sync.sh`) — CSI 1000/2000/300+500
 3. **News / theme archive** (`run-news-archive.sh` → `scripts/news_archive.py`, `NEWS_ARCHIVE_ENABLE=true`) —
    a failure does not block the later steps. Writes `data/news/<source>/<YYYY-MM-DD>.jsonl`:

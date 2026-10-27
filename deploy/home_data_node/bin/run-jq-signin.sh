@@ -11,12 +11,13 @@ cd "$REPO_ROOT"
 
 export PATH="$HOME/.local/bin:$PATH"
 export JQ_DEBUG_DIR="${JQ_DEBUG_DIR:-$REPO_ROOT/output}"
+export JQ_SOLVE_CAPTCHA="${JQ_SOLVE_CAPTCHA:-1}"
 
 echo "[$(date -Iseconds)] run-jq-signin start"
 
 # Make sure Chromium is installed on first run (idempotent)
 if ! uv run python -c "from playwright.sync_api import sync_playwright" 2>/dev/null; then
-    echo "[install] playwright python package missing — run: uv pip install playwright scipy Pillow numpy"
+    echo "[install] playwright python package missing — run: uv pip install playwright Pillow numpy"
     exit 1
 fi
 if [ ! -d "$HOME/.cache/ms-playwright" ] && [ ! -d "$HOME/.local/share/ms-playwright" ]; then

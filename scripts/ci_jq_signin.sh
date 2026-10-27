@@ -10,7 +10,7 @@ PIP_INDEX="${PIP_INDEX_URL:-https://mirrors.aliyun.com/pypi/simple/}"
 PW_MIRROR="${PLAYWRIGHT_DOWNLOAD_HOST:-https://cdn.npmmirror.com/binaries/playwright}"
 
 python3 -V
-python3 -m pip install -q --disable-pip-version-check -i "$PIP_INDEX" playwright numpy pillow scipy
+python3 -m pip install -q --disable-pip-version-check -i "$PIP_INDEX" playwright numpy pillow
 
 # Fail fast before the slow browser install: a region block or missing credentials means the run cannot succeed.
 python3 - <<'PY'

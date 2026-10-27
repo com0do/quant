@@ -62,7 +62,7 @@ c_ok "Python dependencies in place"
 
 if [[ "${JQ_SIGNIN_ENABLE:-true}" == "true" ]]; then
         c_step "Installing Playwright (JoinQuant check-in)"
-    sudo -u "$RUN_AS_USER" bash -lc "cd '$REPO_ROOT' && $RUN_AS_HOME/.local/bin/uv pip install playwright scipy Pillow numpy"
+    sudo -u "$RUN_AS_USER" bash -lc "cd '$REPO_ROOT' && $RUN_AS_HOME/.local/bin/uv pip install playwright Pillow numpy"
     sudo -u "$RUN_AS_USER" bash -lc "cd '$REPO_ROOT' && $RUN_AS_HOME/.local/bin/uv run playwright install chromium" || \
                 c_warn "playwright install chromium failed; run it manually later"
 fi
